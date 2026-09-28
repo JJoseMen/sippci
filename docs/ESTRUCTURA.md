@@ -1,6 +1,6 @@
 # Estructura del Proyecto SIPPCI V2.0
 
-**Última actualización:** 25/09/2026
+**Última actualización:** 28/09/2026
 
 ## Raíz
 
@@ -11,7 +11,7 @@ Bomberos/
 ├── scripts/          dev.ps1, build.ps1, init.ps1
 ├── .gitignore
 ├── README.md
-└── INFOME_FASE4.md
+└── INFORME_FASE4.md
 
 ## Backend
 
@@ -24,7 +24,7 @@ backend/
 │   └── seed-cumplimiento.ts
 └── src/
     ├── common/              (guards, decorators, utils)
-    ├── modules/             (18 módulos)
+    ├── modules/             (18 registrados en app.module: 17 de dominio + Prisma)
     │   ├── admin/
     │   ├── auth/
     │   ├── capacitaciones/

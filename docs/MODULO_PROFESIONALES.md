@@ -95,7 +95,7 @@ BORRADOR → ENVIADA → EN_REVISION → APROBADA → CERTIFICADO_EMITIDO
 
 ## Pendientes
 
-- Testing E2E (FASE 1.7.B)
+- ✅ Testing E2E (ver `docs/TESTING_PROFESIONALES.md` — 7/7 pasando)
 - Persistir rutaArchivo en certificados (requiere migración)
 - Notificaciones por email al aprobar/observar/rechazar
 - Exportación de reportes a Excel/PDF

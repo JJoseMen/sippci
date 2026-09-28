@@ -36,8 +36,8 @@ SIPPCI/
 ### 1. Clonar el repositorio
 
 ```bash
-git clone <url>
-cd SIPPCI
+git clone https://github.com/JJoseMen/sippci.git
+cd sippci
 ```
 
 ### 2. Backend
@@ -103,6 +103,14 @@ npm run dev
 ## Documentación adicional
 
 - `docs/API.md`
+- `docs/API_PROFESIONALES.md`
+- `docs/API_CUMPLIMIENTO.md`
+- `docs/MODULO_PROFESIONALES.md`
+- `docs/MODULO_CUMPLIMIENTO.md`
+- `docs/MATRIZ_PROFESIONALES.md`
+- `docs/MATRIZ_CUMPLIMIENTO.md`
+- `docs/TESTING_PROFESIONALES.md`
+- `docs/TESTING_CUMPLIMIENTO.md`
 - `docs/BASE_DATOS.md`
 - `docs/INSTALACION.md`
 - `docs/LINT_WARNINGS.md`
