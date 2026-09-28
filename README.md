@@ -75,10 +75,10 @@ npm run dev
 
 ## Base de datos
 
-- 24 tablas + `_prisma_migrations`
-- 4 migraciones: `init`, `add_revisado_estado`, `add_renovacion_fields`, `add_fecha_entrega`
-- 11 estados en `EstadoSolicitud`
-- 67 endpoints en 16 controllers
+- 23 modelos + `_prisma_migrations`
+- 8 migraciones: `init`, `add_revisado_estado`, `add_renovacion_fields`, `add_fecha_entrega`, `add_5_roles`, `add_tipo_documento_values`, `add_declaracion_jurada_v2`, `add_estados_inspeccion`
+- 14 estados en `EstadoSolicitud`
+- 18 controllers
 
 ## Autenticación
 

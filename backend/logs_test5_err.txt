@@ -1,6 +1,0 @@
-[31m[Nest] 25700  - [39m22/09/2026, 4:17:20 p. m. [31m  ERROR[39m [38;5;3m[EmailService] [39m[31mError enviando OTP a juanjosemendoza342+f3sip@gmail.com[39m
-[31m[Nest] 25700  - [39m22/09/2026, 4:17:20 p. m. [31m  ERROR[39m [38;5;3m[EmailService] [39m[31mError: Connection timeout[39m
-[31m[Nest] 25700  - [39m22/09/2026, 4:17:31 p. m. [31m  ERROR[39m [38;5;3m[EmailService] [39m[31mError enviando OTP a juanjosemendoza342+f3prof@gmail.com[39m
-[31m[Nest] 25700  - [39m22/09/2026, 4:17:31 p. m. [31m  ERROR[39m [38;5;3m[EmailService] [39m[31mError: Connection timeout[39m
-[31m[Nest] 25700  - [39m22/09/2026, 4:17:41 p. m. [31m  ERROR[39m [38;5;3m[EmailService] [39m[31mError enviando OTP a juanjosemendoza342+f3cap@gmail.com[39m
-[31m[Nest] 25700  - [39m22/09/2026, 4:17:41 p. m. [31m  ERROR[39m [38;5;3m[EmailService] [39m[31mError: Connection timeout[39m

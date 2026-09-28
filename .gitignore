@@ -34,3 +34,31 @@ coverage/
 
 # Uploads
 uploads/
+
+# Logs de aplicación
+backend/logs_*.txt
+backend/logs/
+*.log
+
+# Uploads de usuarios (no versionar)
+backend/uploads/certificados/
+backend/uploads/documentos/
+backend/uploads/declaraciones/
+backend/uploads/informes/
+
+# Archivos temporales
+backend/temp/
+backend/tmp/
+backend/check-*.js
+
+# Seed scripts (locales, no versionar)
+# NOTA: seed-profesionales.ts y seed-cumplimiento.ts SÍ se versionan
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Build
+backend/dist/
+frontend/dist/
+build/
