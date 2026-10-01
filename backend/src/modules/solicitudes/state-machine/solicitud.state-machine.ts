@@ -12,10 +12,10 @@ const TRANSICIONES: Record<EstadoSolicitud, EstadoSolicitud[]> = {
   ],
   REVISADO: [EstadoSolicitud.APROBADA],
   OBSERVADA: [EstadoSolicitud.ENVIADA],
-  INSPECCION_PROGRAMADA: [EstadoSolicitud.EN_INSPECCION, EstadoSolicitud.RECHAZADA],
-  EN_INSPECCION: [EstadoSolicitud.INFORME_REGISTRADO],
+  INSPECCION_PROGRAMADA: [EstadoSolicitud.INFORME_REGISTRADO, EstadoSolicitud.RECHAZADA],
   INFORME_REGISTRADO: [
     EstadoSolicitud.REVISADO,
+    EstadoSolicitud.APROBADA,
     EstadoSolicitud.OBSERVADA,
     EstadoSolicitud.RECHAZADA,
   ],

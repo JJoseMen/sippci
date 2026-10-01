@@ -19,7 +19,6 @@ const estadoOptions = [
   { value: 'EN_REVISION', label: 'En revisión' },
   { value: 'OBSERVADA', label: 'Observada' },
   { value: 'INSPECCION_PROGRAMADA', label: 'Inspección programada' },
-  { value: 'EN_INSPECCION', label: 'En inspección' },
   { value: 'INFORME_REGISTRADO', label: 'Informe registrado' },
   { value: 'APROBADA', label: 'Aprobada' },
   { value: 'RECHAZADA', label: 'Rechazada' },
@@ -48,7 +47,6 @@ function variantPorEstado(estado: string): 'success' | 'warning' | 'danger' | 'i
       return 'danger';
     case 'EN_REVISION':
     case 'INSPECCION_PROGRAMADA':
-    case 'EN_INSPECCION':
       return 'warning';
     case 'ENVIADA':
       return 'info';

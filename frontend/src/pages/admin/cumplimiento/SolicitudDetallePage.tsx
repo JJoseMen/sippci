@@ -127,7 +127,10 @@ export function CumplimientoDetallePage({ tipo }: Props) {
   const estado = solicitud.estado as string;
   const puedeAccionar = ['EN_REVISION', 'REVISADO', 'ENVIADA'].includes(estado);
   const puedeProgramar = estado === 'EN_REVISION';
-  const puedeEmitir = estado === 'APROBADA' || estado === 'INFORME_REGISTRADO';
+  const puedeEmitir = estado === 'APROBADA';
+  const puedeAprobarInforme = estado === 'INFORME_REGISTRADO';
+  const puedeObservarInforme = estado === 'INFORME_REGISTRADO';
+  const puedeRechazarInforme = estado === 'INFORME_REGISTRADO';
 
   const sistemas = datos.sistemasContraIncendios as string[] | undefined;
 
@@ -295,6 +298,21 @@ export function CumplimientoDetallePage({ tipo }: Props) {
         {puedeProgramar && (
           <Button variant="secondary" size="sm" onClick={() => setModalInspeccion(true)} disabled={accionLoading}>
             Programar Inspección
+          </Button>
+        )}
+        {puedeAprobarInforme && (
+          <Button variant="primary" size="sm" onClick={handleAprobar} disabled={accionLoading}>
+            Aprobar informe
+          </Button>
+        )}
+        {puedeObservarInforme && (
+          <Button variant="secondary" size="sm" onClick={() => setModal('observar')} disabled={accionLoading}>
+            Observar informe
+          </Button>
+        )}
+        {puedeRechazarInforme && (
+          <Button variant="ghost" size="sm" onClick={() => setModal('rechazar')} disabled={accionLoading}>
+            Rechazar informe
           </Button>
         )}
         {puedeEmitir && (

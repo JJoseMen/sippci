@@ -43,6 +43,10 @@ export class CumplimientoService {
 
     if (query.estado) where.estado = query.estado;
 
+    if (query.nivelRiesgo) {
+      where.datosJson = { path: ['nivelRiesgo'], equals: query.nivelRiesgo };
+    }
+
     if (query.search) {
       where.OR = [
         { codigoFormulario: { contains: query.search, mode: 'insensitive' } },
@@ -268,6 +272,13 @@ export class CumplimientoService {
 
     if (query.estado) where.estado = query.estado;
 
+    if (query.nivelRiesgo) {
+      where.solicitud = {
+        ...(where.solicitud as Record<string, unknown>),
+        datosJson: { path: ['nivelRiesgo'], equals: query.nivelRiesgo },
+      };
+    }
+
     if (query.search) {
       where.OR = [
         { solicitud: { codigoFormulario: { contains: query.search, mode: 'insensitive' } } },
@@ -341,6 +352,12 @@ export class CumplimientoService {
       throw new NotFoundException(`Inspección ${id} no encontrada`);
     }
 
+    if (insp.solicitud.estado !== 'INSPECCION_PROGRAMADA') {
+      throw new BadRequestException(
+        `Solo se puede registrar informe si la solicitud está en INSPECCION_PROGRAMADA. Estado actual: ${insp.solicitud.estado}`,
+      );
+    }
+
     // Mapear resultado al estado de inspección
     const estadoInspeccion =
       dto.resultado === 'APTO'
@@ -396,11 +413,7 @@ export class CumplimientoService {
   ) {
     const sol = await this.getSolicitudValidada(codigo);
 
-    if (sol.estado !== 'APROBADA' && sol.estado !== 'INFORME_REGISTRADO') {
-      throw new BadRequestException(
-        `Solo se puede emitir certificado de solicitudes APROBADAS o con INFORME_REGISTRADO. Estado actual: ${sol.estado}`,
-      );
-    }
+    this.validarTransicion(sol.estado, 'CERTIFICADO_EMITIDO');
 
     const existente = await this.prisma.certificados.findFirst({
       where: { solicitudId: sol.id, activo: true },

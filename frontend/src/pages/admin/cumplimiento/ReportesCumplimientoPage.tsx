@@ -26,7 +26,6 @@ const COLORES_ESTADO: Record<string, string> = {
   EN_REVISION: '#3b82f6',
   OBSERVADA: '#facc15',
   INSPECCION_PROGRAMADA: '#f97316',
-  EN_INSPECCION: '#fb923c',
   INFORME_REGISTRADO: '#14b8a6',
   APROBADA: '#86efac',
   RECHAZADA: '#ef4444',

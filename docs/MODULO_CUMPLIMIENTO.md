@@ -93,9 +93,17 @@ Rutas (ver `src/router/index.tsx`): `/admin/sippci/cumplimiento/solicitudes/natu
    - APTO → inspección CONFORME, solicitud INFORME_REGISTRADO
    - OBSERVADO → inspección EN_CURSO, solicitud OBSERVADA
    - NO_APTO → inspección NO_CONFORME, solicitud OBSERVADA
-7. Con APROBADA o INFORME_REGISTRADO → "Emitir Certificado"
-8. Se genera `CERT-SIPPCI-YYYY-NNNN` (auto-incremental por año), PDF + QR,
+7. Con INFORME_REGISTRADO, el gestor revisa el informe y decide:
+   - ✅ APROBAR INFORME → estado APROBADA
+   - ⚠️ OBSERVAR INFORME (justificación ≥10 chars) → estado OBSERVADA
+   - ❌ RECHAZAR INFORME (justificación ≥10 chars) → estado RECHAZADA
+8. Con APROBADA → "Emitir Certificado"
+9. Se genera `CERT-SIPPCI-YYYY-NNNN` (auto-incremental por año), PDF + QR,
    estado CERTIFICADO_EMITIDO. Si ya existe un certificado activo, se rechaza (400).
+
+> **Cambio importante (Fix A3):** La emisión de certificado desde `INFORME_REGISTRADO` **ya no es válida**.
+> Ahora el flujo exige: `INFORME_REGISTRADO → APROBADA → CERTIFICADO_EMITIDO`.
+> Se añadieron 3 botones específicos para `INFORME_REGISTRADO`: "Aprobar informe", "Observar informe", "Rechazar informe".
 
 ## Certificados
 
@@ -113,21 +121,20 @@ Rutas (ver `src/router/index.tsx`): `/admin/sippci/cumplimiento/solicitudes/natu
 BORRADOR → ENVIADA → EN_REVISION → REVISADO → APROBADA → CERTIFICADO_EMITIDO
                         │    ├→ OBSERVADA (vuelve a ENVIADA)
                         │    └→ RECHAZADA (final)
-                        └→ INSPECCION_PROGRAMADA → INFORME_REGISTRADO → REVISADO / OBSERVADA / RECHAZADA
-                                                 └→ RECHAZADA (directo)
+                        └→ INSPECCION_PROGRAMADA → INFORME_REGISTRADO → APROBADA → CERTIFICADO_EMITIDO
+                                                 ├→ OBSERVADA (vuelve a ENVIADA)
+                                                 └→ RECHAZADA (final)
 ```
 
  Definido en `solicitud.state-machine.ts`:
  `EN_REVISION → INSPECCION_PROGRAMADA`,
- `INSPECCION_PROGRAMADA → EN_INSPECCION | RECHAZADA`,
- `EN_INSPECCION → INFORME_REGISTRADO`,
- `INFORME_REGISTRADO → REVISADO | OBSERVADA | RECHAZADA`.
+ `INSPECCION_PROGRAMADA → INFORME_REGISTRADO | RECHAZADA`,
+ `INFORME_REGISTRADO → REVISADO | APROBADA | OBSERVADA | RECHAZADA`.
 
-> ⚠️ Observación verificada en código: el servicio **nunca asigna `EN_INSPECCION`**
-> a la solicitud — `programarInspeccion` pone `INSPECCION_PROGRAMADA` y
-> `registrarInforme` salta directo a `INFORME_REGISTRADO`/`OBSERVADA` sin
-> `validarTransicion`. La state-machine sí contempla el paso intermedio.
-> Decidir si se usa (p. ej. al iniciar la visita) o se elimina del mapa.
+> ✅ **Fix B2 (28/09/2026):** Estado `EN_INSPECCION` eliminado del enum y del mapa de transiciones.
+> El flujo de inspección ahora salta directo de `INSPECCION_PROGRAMADA` a `INFORME_REGISTRADO`
+> (o `RECHAZADA`) tras registrar el informe. El estado `EN_INSPECCION` era un paso intermedio
+> que nunca se usaba en la práctica (ningún endpoint lo asignaba).
 
 ## Nivel de riesgo
 
@@ -137,7 +144,23 @@ y reporte `por-nivel-riesgo`. Dato origen: `solicitudes.datosJson`
 
 ## Pendientes del módulo
 
-- Definir uso de `EN_INSPECCION` (ver observación arriba).
 - Confirmar destino del QR en certificados SIPPCI.
 - Notificaciones por email al aprobar/observar/rechazar/emitir.
 - Exportación de reportes a Excel/PDF.
+
+## Cambios recientes
+
+### Fix A3 (28/09/2026)
+- Añadida transición `INFORME_REGISTRADO → APROBADA` en state-machine.
+- `emitirCertificado` ahora usa `validarTransicion` (solo permite `APROBADA → CERTIFICADO_EMITIDO`).
+- Frontend: 3 botones nuevos para `INFORME_REGISTRADO`: "Aprobar informe", "Observar informe", "Rechazar informe".
+- Flujo post-informe: `INFORME_REGISTRADO → (aprobar|observar|rechazar) → APROBADA|OBSERVADA|RECHAZADA`.
+- Emitir certificado **solo desde APROBADA** (ya no desde INFORME_REGISTRADO).
+
+### Fix B2 (28/09/2026)
+- Eliminado estado `EN_INSPECCION` del enum `EstadoSolicitud` (migración BD + 13 estados restantes).
+- State-machine: `INSPECCION_PROGRAMADA → INFORME_REGISTRADO` directo (sin paso intermedio).
+- Service: `registrarInforme` solo acepta `INSPECCION_PROGRAMADA`.
+- DTO: `query-cumplimiento.dto.ts` sin `EN_INSPECCION` en filtro `estado`.
+- Frontend: filtro, badge y color de gráfico eliminados.
+- BD: 13 estados en `EstadoSolicitud` (era 14).
