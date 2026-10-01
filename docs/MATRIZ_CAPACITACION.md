@@ -2,9 +2,9 @@
 
 **Proyecto:** SIPPCI V2.0
 **Módulo:** SIPPCI → Capacitación
-**Fecha:** 30/09/2026
+**Fecha:** 01/10/2026
 **Autor:** Juan José Mendoza Condori (rodri)
-**Estado:** Definición aprobada — En implementación
+**Estado:** Backend + Frontend de Instructores, Programaciones y Participantes completados (3.0 → 3.3.D); quedan certificados, reportes y formulario ciudadano
 
 ---
 
@@ -95,6 +95,21 @@ Igual pero con acceso a Administración, Usuarios, Auditoría (solo lectura).
 |------|-------|-----|
 | `/ciudadano/capacitaciones` | Catálogo + formulario | Ciudadano/Empresa logueado |
 | `/validar-certificado-capacitacion/:codigo` | Validación pública | Público |
+
+### Nota §4 — rutas implementadas (verificado 01/10/2026)
+
+Implementadas y registradas en `frontend/src/router/index.tsx`:
+
+| Ruta real | Componente | Estado |
+|-----------|-----------|--------|
+| `/admin/sippci/capacitaciones/programaciones` | `ProgramacionesListPage` | ✅ |
+| `/admin/sippci/capacitaciones/programaciones/:id` | `ProgramacionDetallePage` | ✅ |
+| `/admin/sippci/capacitaciones/instructores` | `InstructoresListPage` | ✅ |
+
+Las rutas `programaciones/nueva`, `programaciones/:id/reprogramar`,
+`instructores/crear` e `instructores/:id/editar` de esta matriz **no existen como
+rutas**: se resuelven con modales dentro del listado/detalle (menos redirects y
+mismo contexto de filtros). El resto de rutas de la tabla siguen planificadas.
 
 ---
 
@@ -213,33 +228,46 @@ Base: /api/admin/sippci/capacitaciones
 - GET /cursos ✅ ya existe
 
 ### Instructores (FASE 3.2 ✅)
-- GET /instructores
-- GET /instructores/:id
-- POST /instructores
-- PUT /instructores/:id
-- DELETE /instructores/:id
+- ✅ GET /instructores — filtros `search`, `activo`, paginación
+- ✅ GET /instructores/:id
+- ✅ POST /instructores — CI único (409 si duplica)
+- ✅ PUT /instructores/:id
+- ✅ DELETE /instructores/:id — **soft delete** (`activo = false`)
 
-### Programaciones (FASE 3.3 — en implementación)
-- 🔜 GET /programaciones
-- 🔜 GET /programaciones/:id
-- 🔜 POST /programaciones
-- 🔜 PUT /programaciones/:id
-- 🔜 PUT /programaciones/:id/reprogramar
-- 🔜 PUT /programaciones/:id/cancelar
-- 🔜 DELETE /programaciones/:id
+### Programaciones (FASE 3.3.A ✅)
+- ✅ GET /programaciones — filtros `search`, `estado`, `cursoId`, `instructorId`, `desde`, `hasta`
+- ✅ GET /programaciones/:id
+- ✅ POST /programaciones — estado inicial `PROGRAMADO`
+- ✅ PUT /programaciones/:id — rechaza `FINALIZADO` y `CANCELADO`
+- ✅ PUT /programaciones/:id/reprogramar — fechas + estado `REPROGRAMADO`
+- ✅ PUT /programaciones/:id/cancelar
+- ✅ PUT /programaciones/:id/iniciar — `PROGRAMADO` → `EN_CURSO`
+- ✅ PUT /programaciones/:id/finalizar — `EN_CURSO` → `FINALIZADO`
+- ➖ DELETE /programaciones/:id — no existe a propósito; la baja es por `cancelar`
 
-### Participantes (existentes, ampliar)
-- GET /solicitudes/:codigo/participantes ✅
-- POST /solicitudes/:codigo/participantes ✅
-- DELETE /participantes/:id ✅
-- POST /solicitudes/:codigo/lista-excel ✅
+### Participantes — inscripción en programación (FASE 3.3.B ✅)
+- ✅ GET /programaciones/:id/participantes — filtros `search`, `estado`, `asistencia`, `aprobado`
+- ✅ POST /programaciones/:id/participantes — valida estado apto, cupo y duplicado (409)
+- ✅ PUT /programaciones/:id/participantes/:participanteId/estado — `estado`, `asistencia`, `aprobado`, `puntaje`, `observaciones`
+- ✅ DELETE /programaciones/:id/participantes/:participanteId — bloqueado si hay certificado
+
+### Participantes — catálogo (FASE 3.3.B ✅)
+- ✅ GET /participantes — catálogo con `search`, `estado`, paginación
+- ✅ POST /participantes — CI único (409 si duplica)
+
+### Participantes (existentes, sin cambios)
+- ✅ GET /solicitudes/:codigo/participantes
+- ✅ POST /solicitudes/:codigo/participantes
+- ✅ DELETE /participantes/:id
+- ✅ POST /solicitudes/:codigo/lista-excel
 - 🔜 GET /solicitudes/:codigo/lista-excel/descargar ⚠️ nuevo
-- GET /solicitudes/:codigo/costo-total ✅
+- ✅ GET /solicitudes/:codigo/costo-total
 
-### Aprobación manual (FASE 3.4)
-- 🔜 POST /programaciones/:id/participantes/:participanteId/aprobar
-- 🔜 POST /programaciones/:id/participantes/:participanteId/reprobar
-- 🔜 GET /programaciones/:id/participantes?estado=APROBADO|REPROBADO
+### Aprobación manual (resuelta en FASE 3.3.B ✅)
+- ✅ Vía `PUT /programaciones/:id/participantes/:participanteId/estado`
+  (`estado = APROBADO | REPROBADO`) — no se crearon endpoints dedicados
+  `aprobar` / `reprobar`, se reutiliza el endpoint genérico de estado.
+- ✅ GET /programaciones/:id/participantes?estado=APROBADO|REPROBADO
 
 ### Certificados (FASE 3.5)
 - 🔜 POST /programaciones/:id/certificados/emitir
@@ -259,23 +287,30 @@ Base: /api/admin/sippci/capacitaciones
 ## 8. 🎨 Páginas Frontend
 
 frontend/src/pages/admin/capacitaciones/
+├── ✅ InstructoresListPage.tsx        (FASE 3.3.D — listado + filtros + paginación)
+├── ✅ ProgramacionesListPage.tsx      (FASE 3.3.C — listado + filtros + acciones)
+├── ✅ ProgramacionDetallePage.tsx     (FASE 3.3.C — tabs de detalle + transiciones)
+├── ✅ programacion.utils.ts           (estados, etiquetas, transiciones permitidas)
+├── ✅ components/
+│   ├── ✅ ProgramacionFormModal.tsx   (crear / editar)
+│   ├── ✅ ReprogramarModal.tsx
+│   ├── ✅ InscribirParticipanteModal.tsx
+│   ├── ✅ EditarParticipanteModal.tsx (estado, asistencia, puntaje)
+│   ├── ✅ InstructorFormModal.tsx     (alta / edición de instructores)
+│   └── ✅ ConfirmarAccionModal.tsx
+├── ➖ InstructorFormPage.tsx          → resuelto con `InstructorFormModal`
+├── ➖ ProgramacionFormPage.tsx        → resuelto con `ProgramacionFormModal`
+├── ➖ ReprogramarPage.tsx             → resuelto con `ReprogramarModal`
 ├── 🔜 DashboardPage.tsx
 ├── 🔜 SolicitudesListPage.tsx
 ├── 🔜 SolicitudDetallePage.tsx
-├── 🔜 InstructoresListPage.tsx
-├── 🔜 InstructorFormPage.tsx (crear/editar)
 ├── 🔜 ParticipantesListPage.tsx
 ├── 🔜 SubirListaPage.tsx
 ├── 🔜 AprobadosReprobadosPage.tsx
 ├── 🔜 CursosPage.tsx
-├── 🔜 ProgramacionListPage.tsx
-├── 🔜 ProgramacionFormPage.tsx (crear)
-├── 🔜 ProgramacionDetallePage.tsx
-├── 🔜 ReprogramarPage.tsx
 ├── 🔜 PuntajesPage.tsx
 ├── 🔜 CertificadosEmitidosPage.tsx
-├── 🔜 ReportesPage.tsx
-└── 🔜 components/
+└── 🔜 ReportesPage.tsx
 
 ### Ciudadano/Empresa (logueado)
 frontend/src/pages/ciudadano/capacitaciones/
@@ -327,14 +362,15 @@ El certificado de capacitación es 100% independiente.
 | 3.0 | Cimientos: @Roles + seed 4 cursos + docs | ✅ |
 | 3.1 | Migración: instructores + programacion + participante_programacion + certificado_capacitacion | ✅ |
 | 3.2 | Backend: CRUD instructores | ✅ |
-| 3.3 | Backend: CRUD programaciones | 🔄 |
-| 3.4 | Backend: aprobación manual | ⏸️ |
-| 3.5 | Backend: certificados PDF + QR propio | ⏸️ |
-| 3.6 | Frontend: router + listas | ⏸️ |
-| 3.7 | Frontend: programación + participantes | ⏸️ |
+| 3.3.A | Backend: CRUD programaciones + transiciones | ✅ |
+| 3.3.B | Backend: inscripción/desinscripción + catálogo de participantes | ✅ |
+| 3.3.C | Frontend: programaciones (listado, detalle, modales) | ✅ |
+| 3.3.D | Frontend: instructores (listado, alta/edición, desactivación) | ✅ |
+| 3.4 | Backend: certificados PDF + QR propio | ⏸️ |
+| 3.5 | Backend: reportes | ⏸️ |
 | 3.8 | Frontend: certificados + reportes | ⏸️ |
 | 3.9 | Frontend: catálogo + formulario | ⏸️ |
-| 3.10 | Testing E2E + Docs | ⏸️ |
+| 3.10 | Testing E2E + Docs | 🔄 — E2E del módulo y docs al día; quedan certificados/reportes |
 
 ---
 

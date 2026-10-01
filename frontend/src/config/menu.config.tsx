@@ -15,6 +15,7 @@ import {
   ClipboardCheck,
   List,
   Bell,
+  CalendarDays,
 } from 'lucide-react';
 
 export interface MenuItem {
@@ -114,8 +115,13 @@ export const MENU_POR_ROL: Record<RolInterno, MenuItem[]> = {
         },
         {
           label: 'Capacitaciones',
-          path: '/admin/sippci/capacitaciones/cursos',
+          path: '/admin/sippci/capacitaciones/programaciones',
           icon: <BookOpen size={18} />,
+        },
+        {
+          label: 'Instructores',
+          path: '/admin/sippci/capacitaciones/instructores',
+          icon: <Users size={18} />,
         },
       ],
     },
@@ -197,6 +203,11 @@ export const MENU_POR_ROL: Record<RolInterno, MenuItem[]> = {
           label: 'Instructores',
           path: '/admin/sippci/capacitaciones/instructores',
           icon: <Users size={18} />,
+        },
+        {
+          label: 'Programaciones',
+          path: '/admin/sippci/capacitaciones/programaciones',
+          icon: <CalendarDays size={18} />,
         },
         {
           label: 'Listas',

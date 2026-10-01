@@ -10,6 +10,10 @@
 }
 
 .dialog {
+  // El backdrop (.overlay) es un hermano posicionado con z-index: 50; sin
+  // posicionarse el panel quedaba POR DEBAJO y absorbía todos los clicks.
+  position: relative;
+  z-index: 51;
   background: #fff;
   border-radius: 0.75rem;
   box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);

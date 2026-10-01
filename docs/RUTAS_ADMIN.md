@@ -25,15 +25,22 @@ Documento de referencia para el equipo. Define TODAS las rutas
 | `/admin/sippci/cumplimiento/certificados` | Certificados |
 | `/admin/sippci/cumplimiento/reportes` | Reportes |
 
-## Módulo SIPPCI → Capacitaciones (futuro)
+## Módulo SIPPCI → Capacitaciones
 
-| Ruta | Vista |
-|------|-------|
-| `/admin/sippci/capacitaciones/cursos` | Cursos |
-| `/admin/sippci/capacitaciones/instructores` | Instructores |
-| `/admin/sippci/capacitaciones/listas` | Listas |
-| `/admin/sippci/capacitaciones/puntajes` | Puntajes |
-| `/admin/sippci/capacitaciones/certificados` | Certificados |
+| Ruta | Vista | Rol | Estado |
+|------|-------|-----|--------|
+| `/admin/sippci/capacitaciones/programaciones` | Programaciones | ADMIN, GESTOR_CAPACITACIONES | ✅ Implementada |
+| `/admin/sippci/capacitaciones/programaciones/:id` | Detalle de programación | ADMIN, GESTOR_CAPACITACIONES | ✅ Implementada |
+| `/admin/sippci/capacitaciones/instructores` | Instructores | ADMIN, GESTOR_CAPACITACIONES | ✅ Implementada |
+| `/admin/sippci/capacitaciones/cursos` | Cursos | ADMIN, GESTOR_CAPACITACIONES | 🔜 |
+| `/admin/sippci/capacitaciones/listas` | Listas | ADMIN, GESTOR_CAPACITACIONES | 🔜 |
+| `/admin/sippci/capacitaciones/puntajes` | Puntajes | ADMIN, GESTOR_CAPACITACIONES | 🔜 |
+| `/admin/sippci/capacitaciones/certificados` | Certificados | ADMIN, GESTOR_CAPACITACIONES | 🔜 |
+
+> **Nota:** alta/edición de instructores y de programaciones se resuelven con
+> **modales** dentro de sus listados (no hay rutas `/crear` ni `/:id/editar`).
+> En el menú de `ADMIN` los enlaces son **planos** porque `AdminSidebar` todavía
+> no renderiza submenús anidados (bug preexistente).
 
 ## Módulo Reglamentación (futuro)
 

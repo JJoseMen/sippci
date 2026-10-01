@@ -1,0 +1,57 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-4;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-4;
+  flex-wrap: wrap;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.6rem;
+  align-items: end;
+  background: $color-white;
+  border: 1px solid $color-gray-200;
+  border-radius: $radius-xl;
+  padding: $spacing-4;
+}
+
+.filterActions {
+  display: flex;
+  gap: $spacing-2;
+}
+
+.nombre {
+  font-weight: 600;
+  color: $color-gray-900;
+}
+
+.sinAccion {
+  font-size: $font-size-sm;
+  color: $color-gray-500;
+}
+
+.acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-4;
+}
+
+.pageInfo {
+  font-size: $font-size-sm;
+  color: $color-gray-600;
+}

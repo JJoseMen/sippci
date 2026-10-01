@@ -2,7 +2,7 @@ import api from '@/lib/api';
 import type { PaginatedResponse } from '@/types/common.types';
 import type {
   Curso,
-  Participante,
+  ParticipanteCapacitacion,
   AgregarParticipanteDto,
   CostoTotalResponse,
 } from '@/types/capacitacion.types';
@@ -13,12 +13,15 @@ export const capacitacionesService = {
     return res.data;
   },
 
-  async agregarParticipante(codigo: string, data: AgregarParticipanteDto): Promise<Participante> {
+  async agregarParticipante(
+    codigo: string,
+    data: AgregarParticipanteDto,
+  ): Promise<ParticipanteCapacitacion> {
     const res = await api.post(`/solicitudes/${codigo}/participantes`, data);
     return res.data;
   },
 
-  async listarParticipantes(codigo: string): Promise<PaginatedResponse<Participante>> {
+  async listarParticipantes(codigo: string): Promise<PaginatedResponse<ParticipanteCapacitacion>> {
     const res = await api.get(`/solicitudes/${codigo}/participantes`);
     return res.data;
   },

@@ -1,0 +1,114 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-4;
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-4;
+  flex-wrap: wrap;
+}
+
+.acciones {
+  display: flex;
+  gap: $spacing-2;
+  flex-wrap: wrap;
+}
+
+.datos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: $spacing-4;
+}
+
+.dato {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.datoLabel {
+  font-size: $font-size-xs;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: $color-gray-500;
+}
+
+.datoValor {
+  font-size: $font-size-sm;
+  color: $color-gray-900;
+  word-break: break-word;
+}
+
+.campoAncho {
+  grid-column: 1 / -1;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.6rem;
+  align-items: end;
+  margin-bottom: $spacing-3;
+}
+
+.filterActions {
+  display: flex;
+  gap: $spacing-2;
+}
+
+.nombreParticipante {
+  font-weight: 600;
+  color: $color-gray-900;
+}
+
+.ciParticipante {
+  display: block;
+  font-size: $font-size-xs;
+  color: $color-gray-500;
+}
+
+.sino {
+  font-size: $font-size-sm;
+}
+
+.si {
+  color: $color-success;
+  font-weight: 600;
+}
+
+.no {
+  color: $color-error;
+  font-weight: 600;
+}
+
+.accionesCelda {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-4;
+}
+
+.pageInfo {
+  font-size: $font-size-sm;
+  color: $color-gray-600;
+}
+
+.aviso {
+  font-size: $font-size-sm;
+  color: $color-gray-600;
+  background: $color-gray-100;
+  border: 1px solid $color-gray-200;
+  border-radius: $radius-md;
+  padding: $spacing-2 $spacing-3;
+}

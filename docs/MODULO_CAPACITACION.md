@@ -10,7 +10,12 @@ Gestionar la inscripción, participación y certificación de capacitaciones obl
 |------|-----------|--------|
 | **3.0 — Cimientos** | `@Roles()` en controller + seed de 4 cursos base + documentación | ✅ **Completada** |
 | **3.1 — Migración de tablas** | 4 tablas nuevas + 2 enums + 1 `@unique` | ✅ **Completada** |
-| 3.2+ | CRUD, inscripciones, certificados, frontend, tests | ⬜ Pendiente |
+| **3.2 — Backend Instructores** | CRUD `/instructores` + 3 DTOs | ✅ **Completada** |
+| **3.3.A — Backend Programaciones** | CRUD `/programaciones` + transiciones de estado | ✅ **Completada** |
+| **3.3.B — Backend Participantes** | Inscripción/desinscripción + catálogo de participantes | ✅ **Completada** |
+| **3.3.C — Frontend** | Programaciones (listado/detalle/modales) + Participantes | ✅ **Completada** |
+| **3.3.D — Frontend Instructores** | Listado, alta/edición y desactivación de instructores | ✅ **Completada** |
+| 3.4+ | Certificados PDF+QR, aprobación manual, reportes, formulario ciudadano | ⬜ Pendiente |
 
 ---
 
@@ -29,9 +34,10 @@ Gestionar la inscripción, participación y certificación de capacitaciones obl
 
 ---
 
-## 3. Endpoints actuales (7 existentes)
+## 3. Endpoints legacy — `CapacitacionesController` (6 existentes, sin prefijo)
 
 Todos bajo prefix implícito `/capacitaciones` (sin prefix explícito en controller).
+**No se tocaron** en las fases 3.2/3.3; el frontend legacy los consume tal cual.
 
 | # | Método | Ruta | Rol requerido | DTO Entrada | Respuesta |
 |---|--------|------|---------------|-------------|-----------|
@@ -48,27 +54,42 @@ Todos bajo prefix implícito `/capacitaciones` (sin prefix explícito en control
 
 ---
 
-## 4. Endpoints planificados (de MATRIZ_CAPACITACION.md sección 7)
+## 4. Endpoints del módulo — estado real
+
+Base: `/api/admin/sippci/capacitaciones` (prefijo compartido por `InstructoresController`,
+`ProgramacionesController` y `ParticipantesController`).
 
 | Endpoint | Existe | Fase | Notas |
 |----------|--------|------|-------|
 | **Cursos** | | | |
-| GET `/cursos` | ✅ | 3.0 | Listar activos |
+| GET `/cursos` | ✅ | 3.0 | Listar activos (controller legacy) |
 | POST `/cursos` | ❌ | DESCARTADO | ~~Crear curso (ADMIN)~~ |
 | PUT `/cursos/:id` | ❌ | DESCARTADO | ~~Actualizar curso (ADMIN)~~ |
 | DELETE `/cursos/:id` | ❌ | DESCARTADO | ~~Desactivar curso (ADMIN)~~ |
 | **Instructores** | | | |
-| GET `/instructores` | ❌ | 3.1 | Listar |
-| POST `/instructores` | ❌ | 3.1 | Crear |
-| PUT `/instructores/:id` | ❌ | 3.1 | Actualizar |
-| DELETE `/instructores/:id` | ❌ | 3.1 | Eliminar |
+| GET `/instructores` | ✅ | 3.2 | Listar: `search`, `activo`, paginación |
+| GET `/instructores/:id` | ✅ | 3.2 | Obtener por id |
+| POST `/instructores` | ✅ | 3.2 | Crear; CI repetido → 409 |
+| PUT `/instructores/:id` | ✅ | 3.2 | Actualizar; CI duplicado → 409 |
+| DELETE `/instructores/:id` | ✅ | 3.2 | **Soft delete**: `activo = false` (no borra filas) |
 | **Programaciones** | | | |
-| GET `/programaciones` | ❌ | 3.2 | Listar con filtros |
-| POST `/programaciones` | ❌ | 3.2 | Crear (GESTOR_CAPACITACIONES) |
-| PUT `/programaciones/:id` | ❌ | 3.2 | Actualizar |
-| DELETE `/programaciones/:id` | ❌ | 3.2 | Cancelar |
-| POST `/programaciones/:id/inscribir` | ❌ | 3.2 | Inscribir participante (ciudadano/gestor) |
-| PUT `/programaciones/:id/aprobar/:participanteId` | ❌ | 3.3 | Aprobar/Rechazar participación |
+| GET `/programaciones` | ✅ | 3.3.A | Filtros `search`, `estado`, `cursoId`, `instructorId`, `desde`, `hasta` |
+| GET `/programaciones/:id` | ✅ | 3.3.A | Trae `curso`, `instructor` y `_count.participantes` |
+| POST `/programaciones` | ✅ | 3.3.A | Crea en `PROGRAMADO`; el instructor debe existir y estar activo |
+| PUT `/programaciones/:id` | ✅ | 3.3.A | Bloqueado si está `FINALIZADO` o `CANCELADO` |
+| PUT `/programaciones/:id/reprogramar` | ✅ | 3.3.A | Cambia fechas + estado → `REPROGRAMADO` |
+| PUT `/programaciones/:id/cancelar` | ✅ | 3.3.A | Transición a `CANCELADO` |
+| PUT `/programaciones/:id/iniciar` | ✅ | 3.3.A | `PROGRAMADO` → `EN_CURSO` |
+| PUT `/programaciones/:id/finalizar` | ✅ | 3.3.A | `EN_CURSO` → `FINALIZADO` |
+| DELETE `/programaciones/:id` | ➖ | — | No existe a propósito: la baja es por `cancelar` |
+| **Participantes — inscripción en una programación** | | | |
+| GET `/programaciones/:id/participantes` | ✅ | 3.3.B | Filtros `search`, `estado`, `asistencia`, `aprobado` + paginación |
+| POST `/programaciones/:id/participantes` | ✅ | 3.3.B | Valida estado apto (`PROGRAMADO`/`REPROGRAMADO`), cupo y duplicado → 409 |
+| PUT `/programaciones/:id/participantes/:participanteId/estado` | ✅ | 3.3.B | Actualiza `estado`, `asistencia`, `aprobado`, `puntaje`, `observaciones` |
+| DELETE `/programaciones/:id/participantes/:participanteId` | ✅ | 3.3.B | Desinscribir; bloqueado si ya hay certificado |
+| **Participantes — catálogo** | | | |
+| GET `/participantes` | ✅ | 3.3.B | Catálogo: `search`, `estado`, paginación |
+| POST `/participantes` | ✅ | 3.3.B | Crear en el catálogo; CI repetido → 409 |
 | **Certificados** | | | |
 | POST `/certificados/emitir` | ❌ | 3.4 | Emitir certificado individual (PDF+QR) |
 | POST `/certificados/emitir-lote` | ❌ | 3.4 | Emisión masiva por programación |
@@ -219,25 +240,36 @@ enum EstadoCertificadoCapacitacion {
 | Seed de 4 cursos base | ✅ Resuelto (FASE 3.0) | 3.0 |
 | Tablas `instructores`, `programacion_curso`, `participante_programacion`, `certificado_capacitacion` + 2 enums | ✅ Resuelto (FASE 3.1) | 3.1 |
 | `@unique` en `cursos.nombre` | ✅ Resuelto (FASE 3.1) | 3.1 |
-| CRUD `instructores` (endpoints) | ❌ Pendiente — tabla creada, sin endpoints | 3.1 |
-| CRUD `programacion_curso` (endpoints) | ❌ Pendiente — tabla creada, sin endpoints | 3.1 |
+| CRUD `instructores` (endpoints) | ✅ Resuelto (FASE 3.2) | 3.1 |
+| CRUD `programacion_curso` (endpoints) | ✅ Resuelto (FASE 3.3.A) | 3.1 |
+| Inscripción / desinscripción + catálogo de participantes | ✅ Resuelto (FASE 3.3.B) | 3.3.B |
+| Servicios/DTOs para las tablas nuevas | ✅ Resuelto (FASE 3.3.A / 3.3.B) | 3.2 |
+| Aprobación manual participantes | ✅ Resuelto (FASE 3.3.B) — vía `PUT .../participantes/:pid/estado` (sin endpoints dedicados `aprobar`/`reprobar`) | 3.2 |
+| Frontend Programaciones (listado, detalle, modales) | ✅ Resuelto (FASE 3.3.C) | 3.6+ |
+| Frontend Participantes (catálogo, inscripción, edición) | ✅ Resuelto (FASE 3.3.C) | 3.7+ |
+| Frontend Instructores (listado, alta/edición, desactivación) | ✅ Resuelto (FASE 3.3.D) | 3.6+ |
+| **Bug: el backdrop del `Modal` compartido tapaba el diálogo** | ✅ Resuelto — `src/components/ui/Modal/Modal.module.scss` (`.dialog` ahora es `position: relative; z-index: 51`). Estaba desde el commit inicial y **ningún click dentro de ningún modal llegaba a su botón** (afectaba a Cumplimiento/Profesionales también); ningún E2E anterior hacía click dentro de un modal, por eso nunca se detectó. | — |
+| Router frontend (rutas de capacitación) | ✅ Resuelto (FASE 3.3.C / 3.3.D) | 3.6+ |
+| Tests e2e de capacitación | ✅ Resuelto — `frontend/e2e/capacitaciones.spec.ts` | 3.5 |
 | POST/PUT/DELETE `/cursos` | ❌ Descartado (decisión conservadora: cursos fijos) | — |
-| Servicios/DTOs para las tablas nuevas | ❌ Pendiente | 3.2 |
-| Aprobación manual participantes | ❌ Pendiente | 3.2 |
 | Certificados PDF+QR (tipo CAPACITACION) | ❌ Pendiente | 3.4 |
-| Páginas frontend (0 actualmente) | ❌ Pendiente | 3.6+ |
-| Router frontend (sin rutas) | ❌ Pendiente | 3.6+ |
-| Tests unitarios/e2e de capacitación (0) | ❌ Pendiente | 3.5 |
+| Reportes de capacitación | ❌ Pendiente | 3.5 |
+| Formulario ciudadano / catálogo público | ❌ Pendiente | 3.9 |
+| Reactivar instructor (soft delete reversible) | ❌ Pendiente — `ActualizarInstructorDto` no acepta `activo` | 3.4+ |
 | Renovación capacitación (no definida) | ❌ Pendiente | 3.7+ |
 | Endpoints ciudadanos dedicados (`/ciudadano/capacitaciones/*`) | ❌ Pendiente | 3.2 |
 | Unificar `participantes_capacitacion.cursoId` (legacy) con `programacion_curso` | ❌ Pendiente — se conserva legacy | 3.2+ |
-| Prefijo de rutas `admin/capacitaciones` | ❌ Pendiente — rompería el frontend si se cambia solo | 3.2+ |
+| Prefijo de rutas `admin/capacitaciones` | ⚠️ Parcial — los controllers nuevos ya usan el prefijo; `CapacitacionesController` (legacy) sigue sin él | 3.2+ |
+| Submenús anidados en `AdminSidebar` para ADMIN | ❌ Pendiente — bug preexistente; el menú ADMIN de capacitación son enlaces planos | 3.4+ |
+| Seed de fixtures de capacitación (programaciones, participantes, instructores) | ❌ Pendiente — hoy se crearon a mano; ver §8 | 3.4+ |
 
 ---
 
 ## 8. Entorno reproducible
 
-Cualquier persona debe poder reconstruir la BD de desarrollo desde cero y que los 16 tests E2E pasen sin intervención manual.
+Cualquier persona debe poder reconstruir la BD de desarrollo desde cero y correr los 30 tests E2E.
+**Hoy falta un paso manual**: los fixtures de capacitación listados más abajo (§*Fixtures*) no
+los crea ningún seed (deuda registrada en §7).
 
 ### Resetear la BD
 
@@ -276,7 +308,25 @@ cd frontend
 npx playwright test --reporter=list
 ```
 
-Resultado esperado: **16/16** (9 de `cumplimiento.spec.ts` + 7 de `profesionales.spec.ts`).
+Resultado esperado: **30/30** (14 de `capacitaciones.spec.ts` + 9 de `cumplimiento.spec.ts` + 7 de `profesionales.spec.ts`).
+
+### Fixtures de capacitación que NO crea ningún seed ⚠️
+
+Los tests 2, 6, 11, 13 y 14 de `capacitaciones.spec.ts` asumen datos que se
+crearon **a mano por la API** durante las fases 3.3.A–3.3.D y que `prisma db seed`
+**no regenera**. Tras un `migrate reset` esos tests fallan hasta volver a crearlos:
+
+| Tabla | Filas esperadas |
+|-------|-----------------|
+| `programacion_curso` | 4: `#1` CANCELADO, `#2` FINALIZADO (cupo 15, `Aula 2`), `#3` REPROGRAMADO (cupo 12, `Salon B`, 2 inscritos), `#4` PROGRAMADO (cupo 2, `Aula Test Cupo`) |
+| `participantes_capacitacion` (catálogo) | 6: Juan Perez, Maria Lopez, Carlos Garcia, Ana Torres, Luis Mamani, Rosa Quispe Mamani |
+| `participante_programacion` | `#3` → Ana Torres + Luis Mamani; `#4` → 1 inscrito |
+| `instructores` | 3 activos: Marco Antonio Vargas Peña (CI 5123456), Carla Fernanda Rojas Mamani (CI 5234567), Diego Alonzo Quispe Ticona (CI 5345678) |
+
+> El test 13 crea **un instructor nuevo por ejecución** (CI autogenerado) y lo
+> desactiva al final, así que la tabla `instructores` acumula una fila inactiva
+> por corrida. Mover todo esto a `prisma/seed-capacitaciones-fixtures.ts` es
+> deuda pendiente (ver §7).
 
 ### Datos que solo crea `seed-e2e-fixtures.ts`
 
@@ -300,9 +350,13 @@ Genera `C:\backups\sippci_<fecha>.sql`. Usar `pg_dump` de **PostgreSQL 17, puert
 
 ## 9. Referencias
 
-- `docs/MATRIZ_CAPACITACION.md` — ⚠️ **No existe en el repo** (referenciada en las tareas; ausente desde FASE 3.0). Las especificaciones se tomaron del enunciado de cada fase.
+- `docs/MATRIZ_CAPACITACION.md` — Matriz técnica del módulo (existe; se actualizó en FASE 3.3).
 - `docs/RUTAS_ADMIN.md` — Rutas admin unificadas
 - `backend/src/modules/capacitaciones/` — Código del módulo
+  (`instructores.*`, `programaciones.*`, `participantes.*` y el `capacitaciones.controller.ts` legacy)
+- `frontend/src/pages/admin/capacitaciones/` — Páginas, modales y estilos del frontend
+- `frontend/src/services/instructores.service.ts` y `programaciones.service.ts` — Clientes HTTP
+- `frontend/e2e/capacitaciones.spec.ts` — Suite E2E del módulo
 - `backend/prisma/schema.prisma` — Modelos de datos
 - `backend/prisma/seed-capacitaciones.ts` — Seed de cursos base
 - `backend/prisma/migrations/20260930150000_add_unique_curso_nombre/` — `@unique` en `cursos.nombre`

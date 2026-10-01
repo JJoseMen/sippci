@@ -1,0 +1,111 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-3;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-3;
+}
+
+.subtitle {
+  font-size: $font-size-sm;
+  color: $color-gray-700;
+}
+
+.label {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $color-gray-900;
+}
+
+.textarea {
+  width: 100%;
+  padding: $spacing-3;
+  font-size: $font-size-sm;
+  font-family: $font-family-base;
+  color: $color-gray-900;
+  border: 1px solid $color-gray-300;
+  border-radius: $radius-md;
+  resize: vertical;
+  outline: none;
+
+  &:focus {
+    border-color: $color-primary;
+  }
+}
+
+.error {
+  font-size: $font-size-sm;
+  color: $color-error;
+  background: rgba(198, 40, 40, 0.06);
+  border: 1px solid rgba(198, 40, 40, 0.25);
+  border-radius: $radius-md;
+  padding: $spacing-2 $spacing-3;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: $spacing-3;
+}
+
+.hint {
+  font-size: $font-size-xs;
+  color: $color-gray-600;
+}
+
+.listaResultados {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-2;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid $color-gray-200;
+  border-radius: $radius-md;
+  padding: $spacing-2;
+  background: $color-gray-50;
+}
+
+.itemResultado {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-3;
+  width: 100%;
+  text-align: left;
+  padding: $spacing-2 $spacing-3;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  background: $color-white;
+  cursor: pointer;
+  font-size: $font-size-sm;
+
+  &:hover {
+    border-color: $color-gray-300;
+  }
+}
+
+.itemSeleccionado {
+  border-color: $color-primary;
+  background: rgba(198, 40, 40, 0.05);
+}
+
+.itemNombre {
+  font-weight: 600;
+  color: $color-gray-900;
+}
+
+.itemCi {
+  color: $color-gray-600;
+}
+
+.fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $spacing-3;
+  font-size: $font-size-sm;
+}

@@ -1,6 +1,6 @@
 # Pendientes — SIPPCI
 
-**Última actualización:** 28/09/2026 (cierre FASE 2, rama `rodri`)
+**Última actualización:** 01/10/2026 (FASE 3.3 Capacitaciones, rama `rodri`)
 
 ## Resumen
 
@@ -15,6 +15,11 @@
 | 7 | Re-ejecutar E2E en esta instancia | — | ✅ Hecho 28/09/2026: 15/15 |
 | 8 | Placeholders `pages/public/Login\|Register` | — | ✅ Eliminados (FASE III) |
 | 9 | Registro JURIDICA ignoraba NIT | — | ✅ Corregido |
+| 10 | 9 errores ESLint frontend (`react-hooks/exhaustive-deps`) | 🟡 medio | Vigente — ver §FASE 3.3 |
+| 11 | Bug Modal: el backdrop tapaba el `dialog` (afectaba a toda la app) | 🔴 alto | ✅ Resuelto — ver §FASE 3.3 |
+| 12 | Instructor sin botón "Reactivar" (decisión: entidad básica) | — | ✅ Decidido — ver §FASE 3.3 |
+| 13 | Fixtures de capacitación creadas a mano en la BD | — | ✅ Resueltos (seed reproducible) |
+| 14 | Test 13 acumulaba instructores inactivos en cada corrida | — | ✅ Resuelto (CI fijo 99999999) |
 
 ## 1. SMTP sin configurar — 🔴 crítico
 
@@ -87,6 +92,72 @@
   3. La relación `usuarios_empresas` con `rol='REPRESENTANTE'`.
 - Respuesta: `{ message, userId, empresaId }` (`empresaId` null para NATURAL).
 - Verificado: JURIDICA crea usuario+empresa+relación; NATURAL queda sin relación.
+
+## FASE 3.3 — Capacitaciones (cierre 01/10/2026)
+
+### 10. 9 errores ESLint frontend — 🟡 medio — Vigente
+
+- Verificado 01/10/2026 con `npx eslint src` (sin `--fix`, sin modificar código).
+- 9 errores `react-hooks/exhaustive-deps` ("rule not found"), todos en módulos
+  **ajenos a Capacitaciones**: `pages/admin/cumplimiento/` y
+  `pages/admin/profesionales/`.
+- 0 errores en `src/pages/admin/capacitaciones/` ni en `e2e/`.
+- No rompen el build (`npm run build` exit 0). **Decisión: no tocarlos** en
+  FASE 3.3 (fuera de alcance); corregirlos aparte antes de activar lint como
+  gate de CI.
+
+### 11. Bug del Modal (backdrop sobre el `dialog`) — ✅ Resuelto
+
+- **Hallazgo:** en `frontend/src/components/ui/Modal/Modal.module.scss` el
+  backdrop tenía `z-index: 50` y `.dialog` quedaba `position: static`, así que
+  el backdrop se pintaba **encima** del panel. Cualquier click dentro de
+  cualquier modal de la app caía en el backdrop y se cerraba.
+- **Alcance real:** afectaba a **toda la aplicación** (Confirmar, Editar,
+  Inscribir, Reprogramar… de Cumplimiento, Profesionales y Capacitaciones).
+  Ningún E2E anterior hacía click dentro de un modal, por eso nunca saltó.
+- **Fix:** `.dialog { position: relative; z-index: 51; }`. Compartido a todos
+  los módulos; es el único cambio de un módulo ajeno hecho en FASE 3.3 y está
+  justificado porque el bug era global.
+- Referencia: `frontend/src/components/ui/Modal/Modal.module.scss`.
+
+### 12. Instructor sin botón "Reactivar" — ✅ Decidido
+
+- **Decisión del usuario:** el instructor es **entidad básica**. La UI expone
+  solo **Desactivar** (soft delete, `activo=false`); si un instructor se
+  desactiva se crea uno nuevo o se queda así.
+- No se implementó botón ni flujo de reactivación en la interfaz.
+- `ActualizarInstructorDto` **sí acepta `activo?: boolean`** (`backend/src/modules/capacitaciones/dto/actualizar-instructor.dto.ts`),
+  exclusivamente para API y para que los tests puedan restaurar el registro de
+  prueba. El endpoint es `PUT /api/admin/sippci/capacitaciones/instructores/:id`.
+- Aún no existe `DELETE` duro: el soft delete no es reversible desde la UI.
+
+### 13. Fixtures de capacitación manuales — ✅ Resueltos
+
+- ~~Datos de capacitación cargados a mano sobre la BD, no reproducibles.~~
+- Reemplazados por seeds reproducibles:
+  - `backend/prisma/seed-capacitaciones.ts` — 4 cursos base (ya en `prisma:seed`).
+  - `backend/prisma/seed-programaciones.ts` — 3 programaciones de ejemplo.
+  - `backend/prisma/seed-capacitaciones-completo.ts` — fixtures completos de la
+    FASE 3.3: 3 instructores (CI 5123456/5234567/5345678), 4 programaciones
+    (1 por curso, ids fijos 1-4), 6 participantes (CI 1000001-1000006) y
+    6 inscripciones. Idempotente (solo upsert, nunca borra).
+- **No registrados en `package.json`** a propósito. Orden manual:
+  1. `cd backend && npx ts-node prisma/seed-programaciones.ts`
+  2. `cd backend && npx ts-node prisma/seed-capacitaciones-completo.ts`
+- ⚠️ El paso 2 es el **definitivo**: `seed-programaciones.ts` escribe estados y
+  cursos distintos para los ids 1-3, así que hay que correr siempre el
+  `completo` al final. Idempotencia verificada 01/10/2026 (2 corridas seguidas,
+  hashes de BD idénticos).
+
+### 14. Test 13 acumulaba instructores inactivos — ✅ Resuelto
+
+- ~~`capacitaciones.spec.ts` test 13 creaba un instructor con CI derivado de
+  `Date.now()` y lo desactivaba: cada corrida dejaba 1 fila inactiva nueva.~~
+- Ahora usa **CI fijo `99999999`** (ficticio, no choca con datos reales):
+  - `beforeAll`: crea el instructor si no existe, o lo reactiva si quedó inactivo.
+  - test: filtra por CI → edita → desactiva.
+  - `afterAll`: lo reactiva vía `PUT` con `{ activo: true }`.
+- Resultado: **0 acumulación** de instructores inactivos tras N corridas.
 
 ## Incidente BD 2026-09-30
 
