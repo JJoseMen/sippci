@@ -62,3 +62,8 @@ coverage/
 backend/dist/
 frontend/dist/
 build/
+
+# Utilidades locales (no versionar)
+scripts/backup-db.ps1
+frontend/playwright-report/
+frontend/test-results/
