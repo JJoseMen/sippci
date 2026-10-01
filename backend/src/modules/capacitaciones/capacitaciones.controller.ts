@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Param, Post, Query, UploadedFile, UseGua
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { CapacitacionesService } from './capacitaciones.service';
 import { CrearParticipanteDto } from './dto/crear-participante.dto';
@@ -9,12 +11,14 @@ import { QueryParticipanteDto } from './dto/query-participante.dto';
 
 @ApiTags('Capacitaciones')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('GESTOR_CAPACITACIONES')
 @Controller()
 export class CapacitacionesController {
   constructor(private capacitacionesService: CapacitacionesService) {}
 
   @Get('cursos')
+  @Roles('GESTOR_CAPACITACIONES', 'ADMIN')
   @ApiOperation({ summary: 'Listar cursos activos' })
   async listarCursos() {
     return this.capacitacionesService.listarCursos();
@@ -31,6 +35,7 @@ export class CapacitacionesController {
   }
 
   @Get('solicitudes/:codigo/participantes')
+  @Roles('GESTOR_CAPACITACIONES', 'ADMIN')
   @ApiOperation({ summary: 'Listar participantes de una solicitud' })
   async listarParticipantes(
     @Param('codigo') codigo: string,
@@ -61,6 +66,7 @@ export class CapacitacionesController {
   }
 
   @Get('solicitudes/:codigo/costo-total')
+  @Roles('GESTOR_CAPACITACIONES', 'ADMIN')
   @ApiOperation({ summary: 'Calcular costo total de capacitacion' })
   async costoTotal(@Param('codigo') codigo: string) {
     return this.capacitacionesService.calcularCostoTotal(codigo);

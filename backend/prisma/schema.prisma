@@ -57,7 +57,6 @@ enum EstadoSolicitud {
   REVISADO
   OBSERVADA
   INSPECCION_PROGRAMADA
-  EN_INSPECCION
   INFORME_REGISTRADO
   APROBADA
   RECHAZADA
@@ -128,6 +127,20 @@ enum EstadoInspeccion {
   EN_CURSO
   CONFORME
   NO_CONFORME
+}
+
+enum EstadoProgramacion {
+  PROGRAMADO
+  EN_CURSO
+  FINALIZADO
+  CANCELADO
+  REPROGRAMADO
+}
+
+enum EstadoCertificadoCapacitacion {
+  EMITIDO
+  VENCIDO
+  REVOCADO
 }
 
 enum TipoNotificacion {
@@ -379,7 +392,7 @@ model declaraciones_juradas {
 
 model cursos {
   id            Int      @id @default(autoincrement())
-  nombre        String
+  nombre        String   @unique
   descripcion   String?
   modalidad     String   @default("PRESENCIAL")
   duracionHoras Int?
@@ -388,6 +401,8 @@ model cursos {
   createdAt     DateTime @default(now())
   participantes participantes_capacitacion[]
   participantesCursos participantes_cursos[]
+  programaciones programacion_curso[]
+  certificados   certificado_capacitacion[]
   @@map("cursos")
 }
 
@@ -405,6 +420,7 @@ model participantes_capacitacion {
   curso              cursos? @relation(fields: [cursoId], references: [id])
   solicitud          solicitudes? @relation(fields: [solicitudId], references: [id])
   relaciones         participantes_cursos[]
+  participanteProgramacion participante_programacion[]
   @@map("participantes_capacitacion")
 }
 
@@ -502,8 +518,98 @@ model niveles_educacion {
 }
 
 model niveles_riesgo {
-  id          Int    @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   descripcion String
-  legacyId    Int?   @unique @map("legacy_id")
+  legacyId    Int?    @unique @map("legacy_id")
   @@map("niveles_riesgo")
+}
+
+model instructores {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  apellido     String
+  ci           String?  @unique
+  email        String?
+  telefono     String?
+  especialidad String?
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  programaciones programacion_curso[]
+  certificados   certificado_capacitacion[]
+
+  @@index([activo])
+  @@map("instructores")
+}
+
+model programacion_curso {
+  id            Int                 @id @default(autoincrement())
+  cursoId       Int
+  instructorId  Int?
+  fechaInicio   DateTime
+  fechaFin      DateTime?
+  lugar         String?
+  cupo          Int?
+  estado        EstadoProgramacion  @default(PROGRAMADO)
+  observaciones String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  curso         cursos   @relation(fields: [cursoId], references: [id])
+  instructor    instructores? @relation(fields: [instructorId], references: [id])
+  participantes participante_programacion[]
+
+  @@index([cursoId])
+  @@index([instructorId])
+  @@index([estado])
+  @@map("programacion_curso")
+}
+
+model participante_programacion {
+  id             Int      @id @default(autoincrement())
+  programacionId Int
+  participanteId Int
+  puntaje        Float?
+  aprobado       Boolean?
+  asistencia     Boolean?
+  certificadoId  Int?
+  observaciones  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  programacion   programacion_curso @relation(fields: [programacionId], references: [id])
+  participante   participantes_capacitacion @relation(fields: [participanteId], references: [id])
+  certificado    certificado_capacitacion? @relation(fields: [certificadoId], references: [id])
+
+  @@unique([programacionId, participanteId])
+  @@index([participanteId])
+  @@index([certificadoId])
+  @@map("participante_programacion")
+}
+
+model certificado_capacitacion {
+  id            Int      @id @default(autoincrement())
+  codigo        String   @unique
+  participanteId Int
+  programacionId Int
+  cursoId       Int
+  instructorId  Int?
+  emitidoEn     DateTime @default(now())
+  vigenciaHasta DateTime
+  rutaPdf       String?
+  qrUrl         String?
+  emitidoPorId  Int?
+  estado        EstadoCertificadoCapacitacion @default(EMITIDO)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  participanteProgramacion participante_programacion[]
+  curso                    cursos    @relation(fields: [cursoId], references: [id])
+  instructor               instructores? @relation(fields: [instructorId], references: [id])
+
+  @@index([participanteId])
+  @@index([programacionId])
+  @@index([estado])
+  @@map("certificado_capacitacion")
 }

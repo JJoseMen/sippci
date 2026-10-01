@@ -18,7 +18,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts && ts-node prisma/seed-cumplimiento.ts && ts-node prisma/seed-profesionales.ts && ts-node prisma/seed-capacitaciones.ts && ts-node prisma/seed-e2e-fixtures.ts"
   },
   "dependencies": {
     "@nestjs/common": "10.4.15",
@@ -74,7 +74,7 @@
     "typescript": "5.7.2"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed.ts && ts-node prisma/seed-cumplimiento.ts && ts-node prisma/seed-profesionales.ts && ts-node prisma/seed-capacitaciones.ts && ts-node prisma/seed-e2e-fixtures.ts"
   },
   "jest": {
     "moduleFileExtensions": [
