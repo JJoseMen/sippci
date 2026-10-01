@@ -87,3 +87,35 @@
   3. La relación `usuarios_empresas` con `rol='REPRESENTANTE'`.
 - Respuesta: `{ message, userId, empresaId }` (`empresaId` null para NATURAL).
 - Verificado: JURIDICA crea usuario+empresa+relación; NATURAL queda sin relación.
+
+## Incidente BD 2026-09-30
+
+### Qué pasó
+- prisma migrate diff --shadow-database-url apuntó por error a la BD
+  principal (sippci) en vez de a una shadow DB separada.
+- Prisma la usó como shadow → vació las 24 tablas + borró _prisma_migrations.
+- Datos perdidos: todo el estado acumulado de desarrollo.
+
+### Cómo se recuperó
+- Backup pre-B2: backup_ppre_b2_2026-09-28.sql (91 KB, 28/09/2026 17:26).
+- Restauración completa: 11 solicitudes, 3 certificados, 7 usuarios externos,
+  10 usuarios internos, 3 empresas, etc.
+- Migraciones posteriores aplicadas con migrate deploy.
+- 16/16 E2E tras la restauración.
+
+### Verificación
+- Acentos: correctos (no corruptos, artefacto de consola).
+- IDs y FKs: intactas.
+- CERT-2026-0001: restaurado (ligado a SOL-JUR-2026-002).
+
+### Lecciones
+1. SIEMPRE backup antes de tocar schema.
+2. Usar prisma migrate dev --create-only (genera SQL sin aplicar).
+3. NUNCA usar --shadow-database-url apuntando a la principal.
+4. Documentar cómo funciona prisma db seed (solo corre seed.ts).
+5. package.json debe registrar TODOS los seeds.
+
+### Deudas pendientes
+- [ ] Test reproducibilidad (migrate reset + seed + E2E) — NO ejecutado.
+- [ ] Confusión PostgreSQL 15 (:5432) vs 17 (:5433) — documentar en README.
+- [ ] Programa de backup automático (scripts/backup-db.ps1 creado, no programado).

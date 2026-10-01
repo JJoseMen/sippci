@@ -80,11 +80,40 @@ npm run dev
 - 14 estados en `EstadoSolicitud`
 - 18 controllers
 
+## PostgreSQL
+
+- Este proyecto usa **PostgreSQL 17 en el puerto 5433**.
+- ⚠️ **NO usar PostgreSQL 15 (puerto 5432)** — es otra instalación en la misma máquina y no contiene la BD `sippci`. Hay dos servidores compitiendo: apuntar al puerto equivocado conecta una BD vacía.
+- `DATABASE_URL` (ya presente en `backend/.env`):
+
+```
+DATABASE_URL=postgresql://postgres:<PASSWORD_DEV>@localhost:5433/sippci?schema=public
+```
+
+- Si `psql` no está en el PATH, usar la ruta completa:
+
+```
+C:\Program Files\PostgreSQL\17\bin\psql.exe -U postgres -p 5433 -d sippci -c "\dt"
+```
+
+### Backup de la BD
+
+```bash
+powershell -File scripts/backup-db.ps1
+```
+
+Crea `C:\backups\sippci_<AAAAmmdd_HHMMSS>.sql`. El script resuelve `pg_dump` (PostgreSQL 17, si no 15) y usa el puerto 5433.
+
+> ⚠️ **Hacer backup antes de cada `npx prisma migrate reset`** — ese comando borra todos los datos.
+> Restaurar: `psql -U postgres -p 5433 -d sippci -f C:\backups\sippci_<fecha>.sql`
+
+Ver `docs/MODULO_CAPACITACION.md` §8 «Entorno reproducible» para el ciclo completo de reset + seeds + E2E.
+
 ## Autenticación
 
 - Externos: email + password + OTP
 - Internos: Kerberos mock (`KERBEROS_MOCK_MODE=true`)
-- Roles: ADMIN, OFICIAL, CAJERO
+- Roles: ADMIN, GESTOR_CUMPLIMIENTO, GESTOR_CAPACITACIONES, GESTOR_REGISTRO_PROFESIONAL, CAJERO
 
 ## Hallazgos y pendientes
 
@@ -96,9 +125,11 @@ npm run dev
 
 ## Credenciales de prueba
 
-- Admin: http://localhost:5173/kerberos/callback?ticket=mock-ticket-admin
-- Oficial: http://localhost:5173/kerberos/callback?ticket=mock-ticket-oficial
-- Cajero: http://localhost:5173/kerberos/callback?ticket=mock-ticket-cajero
+- Admin: http://localhost:5173/kerberos/callback?ticket=admin-mock-ticket
+- Gestor Cumplimiento: http://localhost:5173/kerberos/callback?ticket=cumplimiento-mock-ticket
+- Gestor Capacitaciones: http://localhost:5173/kerberos/callback?ticket=capacitacion-mock-ticket
+- Gestor Registro Profesional: http://localhost:5173/kerberos/callback?ticket=registro-mock-ticket
+- Cajero: http://localhost:5173/kerberos/callback?ticket=cajero-mock-ticket
 
 ## Documentación adicional
 
