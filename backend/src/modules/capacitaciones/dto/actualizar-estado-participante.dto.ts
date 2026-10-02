@@ -9,6 +9,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 export class ActualizarEstadoParticipanteDto {
@@ -20,14 +21,6 @@ export class ActualizarEstadoParticipanteDto {
   @IsOptional()
   @IsEnum(EstadoParticipante)
   estado?: EstadoParticipante;
-
-  @ApiPropertyOptional({
-    description: 'true = ASISTIO, false = NO_ASISTIO',
-    example: true,
-  })
-  @IsOptional()
-  @IsBoolean()
-  asistencia?: boolean;
 
   @ApiPropertyOptional({
     description: 'true = APROBADO, false = REPROBADO',
@@ -49,4 +42,14 @@ export class ActualizarEstadoParticipanteDto {
   @IsString()
   @MaxLength(500)
   observaciones?: string;
+
+  @ApiPropertyOptional({
+    description: 'Obligatoria al corregir un resultado previo',
+    example: 'El instructor se equivoco',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  justificacion?: string;
 }

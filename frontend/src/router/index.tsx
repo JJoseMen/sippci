@@ -12,6 +12,7 @@ import { ContactosPage } from '@/pages/public/ContactosPage';
 import { TramitesPage } from '@/pages/public/TramitesPage';
 import { ConsultaPublicaPage } from '@/pages/public/ConsultaPublicaPage';
 import { ValidarCertificadoPage } from '@/pages/public/ValidarCertificadoPage';
+import { ValidarCertificadoCapacitacionPage } from '@/pages/public/ValidarCertificadoCapacitacionPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { RegisterPage } from '@/pages/auth/RegisterPage';
 import { VerifyOtpPage } from '@/pages/auth/VerifyOtpPage';
@@ -45,6 +46,10 @@ import { ReportesCumplimientoPage } from '@/pages/admin/cumplimiento/ReportesCum
 import { ProgramacionesListPage } from '@/pages/admin/capacitaciones/ProgramacionesListPage';
 import { ProgramacionDetallePage } from '@/pages/admin/capacitaciones/ProgramacionDetallePage';
 import { InstructoresListPage } from '@/pages/admin/capacitaciones/InstructoresListPage';
+import { CertificadosEmitidosPage as CertificadosCapacitacionPage } from '@/pages/admin/capacitaciones/CertificadosEmitidosPage';
+import { CursosPage } from '@/pages/admin/capacitaciones/CursosPage';
+import { ListasPage } from '@/pages/admin/capacitaciones/ListasPage';
+import { PuntajesPage } from '@/pages/admin/capacitaciones/PuntajesPage';
 import { OficialDashboardPage } from '@/pages/oficial/OficialDashboardPage';
 import { SolicitudesAsignadasPage } from '@/pages/oficial/SolicitudesAsignadasPage';
 import { RevisionDocumentosPage } from '@/pages/oficial/RevisionDocumentosPage';
@@ -67,6 +72,10 @@ export const router = createBrowserRouter([
       { path: '/tramites', element: <TramitesPage /> },
       { path: '/consulta', element: <ConsultaPublicaPage /> },
       { path: '/validar-certificado/:codigo', element: <ValidarCertificadoPage /> },
+      {
+        path: '/validar-certificado-capacitacion/:codigo',
+        element: <ValidarCertificadoCapacitacionPage />,
+      },
       { path: '/login', element: <LoginPage /> },
       { path: '/register', element: <RegisterPage /> },
       { path: '/verify-otp', element: <VerifyOtpPage /> },
@@ -167,6 +176,22 @@ export const router = createBrowserRouter([
       {
         path: '/admin/sippci/capacitaciones/instructores',
         element: <InstructoresListPage />,
+      },
+      {
+        path: '/admin/sippci/capacitaciones/cursos',
+        element: <CursosPage />,
+      },
+      {
+        path: '/admin/sippci/capacitaciones/listas',
+        element: <ListasPage />,
+      },
+      {
+        path: '/admin/sippci/capacitaciones/puntajes',
+        element: <PuntajesPage />,
+      },
+      {
+        path: '/admin/sippci/capacitaciones/certificados',
+        element: <CertificadosCapacitacionPage />,
       },
       { path: '/admin/usuarios', element: <UsuariosPage /> },
       { path: '/admin/certificados', element: <CertificadosPage /> },

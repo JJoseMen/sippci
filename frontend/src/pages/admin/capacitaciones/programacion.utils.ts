@@ -30,7 +30,6 @@ export const VARIANTE_PARTICIPANTE: Record<string, VarianteBadge> = {
   INSCRITO: 'info',
   APROBADO: 'success',
   REPROBADO: 'danger',
-  ABANDONO: 'warning',
 };
 
 // Transiciones permitidas (espejo de TRANSICIONES en programaciones.service.ts)
@@ -56,6 +55,11 @@ export function puedeCancelar(estado: EstadoProgramacion): boolean {
 
 export function puedeGestionarParticipantes(estado: EstadoProgramacion): boolean {
   return estado === 'PROGRAMADO' || estado === 'REPROGRAMADO';
+}
+
+// Espejo de ESTADOS_APTOS_RESULTADO en programaciones.service.ts
+export function puedeResolverResultados(estado: EstadoProgramacion): boolean {
+  return estado === 'EN_CURSO' || estado === 'FINALIZADO';
 }
 
 export function formatoCupo(inscritos: number, cupo: number | null): string {

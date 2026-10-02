@@ -1,0 +1,51 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-4;
+}
+
+.filters {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+  background: $color-white;
+  border: 1px solid $color-gray-200;
+  border-radius: $radius-xl;
+  padding: $spacing-4;
+}
+
+.codigo {
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.principal {
+  display: block;
+  font-weight: 600;
+}
+
+.secundario {
+  display: block;
+  font-size: $font-size-sm;
+  color: $color-gray-600;
+}
+
+.actions {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $spacing-4;
+  margin-top: $spacing-4;
+}
+
+.pageInfo {
+  font-size: $font-size-sm;
+  color: $color-gray-600;
+}

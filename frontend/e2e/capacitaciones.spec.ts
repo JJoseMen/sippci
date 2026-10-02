@@ -59,6 +59,62 @@ async function reactivarFixture(request: APIRequestContext, headers: AuthHeaders
   expect(res.ok()).toBeTruthy();
 }
 
+const PROGRAMACIONES_API = '/api/admin/sippci/capacitaciones/programaciones';
+// Programación FINALIZADO con participantes sin certificado: apta para resolver.
+const PROG_RESULTADOS = 2;
+// Programación PROGRAMADO: no apta para resolver resultados.
+const PROG_PROGRAMADA = 4;
+// Participante de prueba (Carlos Garcia) reutilizado por los tests 15-17.
+const PART_RESULTADOS = 4;
+
+type EstadoParticipanteE2E = 'INSCRITO' | 'APROBADO' | 'REPROBADO';
+
+type InscripcionE2E = {
+  participanteId: number;
+  participante?: { estado: string } | null;
+};
+
+// Deja al participante en el estado pedido. Si había un resultado previo,
+// envía justificación: la API la exige al corregir (mínimo 10 caracteres).
+async function fijarEstadoParticipante(
+  request: APIRequestContext,
+  headers: AuthHeaders,
+  programacionId: number,
+  participanteId: number,
+  estado: EstadoParticipanteE2E,
+) {
+  const listado = await request.get(
+    `${PROGRAMACIONES_API}/${programacionId}/participantes?limit=100`,
+    { headers },
+  );
+  expect(listado.ok()).toBeTruthy();
+  const body = (await listado.json()) as { items: InscripcionE2E[] };
+  const inscripcion = body.items.find((i) => i.participanteId === participanteId);
+  expect(inscripcion, 'La inscripción debe existir antes del test').toBeTruthy();
+
+  const previo = inscripcion?.participante?.estado ?? 'INSCRITO';
+  if (previo === estado) return;
+
+  const data: Record<string, unknown> = { estado };
+  if (previo !== 'INSCRITO') {
+    data.justificacion = 'Reinicio automatico de la prueba E2E';
+  }
+
+  const res = await request.put(
+    `${PROGRAMACIONES_API}/${programacionId}/participantes/${participanteId}/estado`,
+    { headers, data },
+  );
+  expect(res.ok(), `No se pudo fijar el estado ${previo} -> ${estado}`).toBeTruthy();
+}
+
+async function abrirParticipantes(
+  page: import('@playwright/test').Page,
+  programacionId: number,
+) {
+  await page.goto(`/admin/sippci/capacitaciones/programaciones/${programacionId}`);
+  await page.getByRole('button', { name: /^Participantes \(\d+\)$/ }).click();
+}
+
 test.describe('Capacitación — Programaciones (GESTOR_CAPACITACIONES)', () => {
   test.beforeEach(async ({ page }) => {
     await login(page, GESTOR_CI);
@@ -277,5 +333,247 @@ test.describe('Capacitación — Instructores', () => {
     await expect(page.getByRole('button', { name: 'Nuevo instructor' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Editar' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Desactivar' })).toHaveCount(0);
+  });
+});
+
+test.describe('Capacitación — Aprobación de participantes', () => {
+  test.beforeEach(async () => {
+    await withApi(async (request) => {
+      const headers = await apiAuth(request);
+      await fijarEstadoParticipante(
+        request,
+        headers,
+        PROG_RESULTADOS,
+        PART_RESULTADOS,
+        'INSCRITO',
+      );
+    });
+  });
+
+  test('15. Aprobar participante (INSCRITO → APROBADO, sin justificación)', async ({ page }) => {
+    await login(page, GESTOR_CI);
+    await abrirParticipantes(page, PROG_RESULTADOS);
+
+    const fila = page.locator('table tbody tr', { hasText: 'Carlos Garcia' });
+    await expect(fila).toHaveCount(1);
+    await fila.getByRole('button', { name: 'Aprobar', exact: true }).click();
+
+    // No debe abrirse el modal de justificación: el participante estaba INSCRITO.
+    await expect(page.locator('#justificacion-participante')).toHaveCount(0);
+    await page.getByRole('dialog').getByRole('button', { name: 'Sí, aprobar' }).click();
+
+    await expect(page.getByText('Participante aprobado')).toBeVisible();
+    await expect(fila.getByText('APROBADO', { exact: true })).toBeVisible();
+    await expect(fila.getByText('Aprobado', { exact: true })).toBeVisible();
+  });
+
+  test('16. Reprobar participante (INSCRITO → REPROBADO)', async ({ page }) => {
+    await login(page, GESTOR_CI);
+    await abrirParticipantes(page, PROG_RESULTADOS);
+
+    const fila = page.locator('table tbody tr', { hasText: 'Carlos Garcia' });
+    await expect(fila).toHaveCount(1);
+    await fila.getByRole('button', { name: 'Reprobar', exact: true }).click();
+
+    await expect(page.locator('#justificacion-participante')).toHaveCount(0);
+    await page.getByRole('dialog').getByRole('button', { name: 'Sí, reprobar' }).click();
+
+    await expect(page.getByText('Participante reprobado')).toBeVisible();
+    await expect(fila.getByText('REPROBADO', { exact: true })).toBeVisible();
+    await expect(fila.getByText('Reprobado', { exact: true })).toBeVisible();
+  });
+
+  test('17. Corregir REPROBADO → APROBADO requiere justificación', async ({ page }) => {
+    await withApi(async (request) => {
+      const headers = await apiAuth(request);
+      await fijarEstadoParticipante(
+        request,
+        headers,
+        PROG_RESULTADOS,
+        PART_RESULTADOS,
+        'REPROBADO',
+      );
+    });
+
+    await login(page, GESTOR_CI);
+    await abrirParticipantes(page, PROG_RESULTADOS);
+
+    const fila = page.locator('table tbody tr', { hasText: 'Carlos Garcia' });
+    await fila.getByRole('button', { name: 'Aprobar', exact: true }).click();
+
+    // Hay resultado previo: obliga a justificar antes de confirmar.
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('#justificacion-participante')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sí, aprobar' })).toHaveCount(0);
+
+    await dialog.locator('#justificacion-participante').fill('corto');
+    await dialog.getByRole('button', { name: 'Continuar' }).click();
+    await expect(
+      dialog.getByText(/La justificación debe tener al menos 10 caracteres/),
+    ).toBeVisible();
+
+    await dialog
+      .locator('#justificacion-participante')
+      .fill('El instructor se equivoco en la calificacion');
+    await dialog.getByRole('button', { name: 'Continuar' }).click();
+
+    await page.getByRole('dialog').getByRole('button', { name: 'Sí, aprobar' }).click();
+    await expect(page.getByText('Participante aprobado')).toBeVisible();
+    await expect(fila.getByText('APROBADO', { exact: true })).toBeVisible();
+    await expect(fila.getByText('El instructor se equivoco en la calificacion')).toBeVisible();
+  });
+
+  test('18. ADMIN no ve botones Aprobar/Reprobar', async ({ page }) => {
+    await login(page, ADMIN_CI);
+    await abrirParticipantes(page, PROG_RESULTADOS);
+
+    await expect(page.locator('table tbody tr').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Aprobar', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Reprobar', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Editar', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Desinscribir' })).toHaveCount(0);
+  });
+
+  test('19. En PROGRAMADO no se pueden aprobar', async ({ page }) => {
+    await login(page, GESTOR_CI);
+    await abrirParticipantes(page, PROG_PROGRAMADA);
+
+    await expect(page.locator('table tbody tr').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Aprobar', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Reprobar', exact: true })).toHaveCount(0);
+    // Sí conserva la edición/inscripción propias de PROGRAMADO.
+    await expect(
+      page.getByRole('button', { name: 'Inscribir participante' }),
+    ).toBeEnabled();
+  });
+});
+
+test.describe('Capacitación — Certificados', () => {
+  const CERTIFICADOS_API = '/api/admin/sippci/capacitaciones/certificados';
+  // Carlos y Rosa: los dos inscritos de la programación FINALIZADO #2.
+  const CI_APROBADOS = ['1000003', '1000006'];
+
+  type InscripcionLista = {
+    participanteId: number;
+    certificadoId?: number | null;
+    participante?: { id: number; ci: string; nombre: string; estado: string } | null;
+  };
+
+  async function participantePorCi(
+    request: APIRequestContext,
+    headers: AuthHeaders,
+    ci: string,
+  ) {
+    const res = await request.get(
+      `${PROGRAMACIONES_API}/${PROG_RESULTADOS}/participantes?limit=100`,
+      { headers },
+    );
+    expect(res.ok()).toBeTruthy();
+    const body = (await res.json()) as { items: InscripcionLista[] };
+    const fila = body.items.find((i) => i.participante?.ci === ci);
+    expect(fila, `CI ${ci} debe estar inscrita en la programación ${PROG_RESULTADOS}`).toBeTruthy();
+    return fila as InscripcionLista;
+  }
+
+  // El API no permite re-emitir (409) ni revocar. El reinicio de certificados
+  // lo hace `e2e/global-setup.ts` al arrancar la suite; aquí solo se deja a
+  // los dos participantes APROBADOS para emitir.
+  test.beforeAll(async () => {
+    await withApi(async (request) => {
+      const headers = await apiAuth(request);
+      for (const ci of CI_APROBADOS) {
+        const fila = await participantePorCi(request, headers, ci);
+        await fijarEstadoParticipante(
+          request,
+          headers,
+          PROG_RESULTADOS,
+          fila.participanteId,
+          'APROBADO',
+        );
+      }
+    });
+  });
+
+  test('20. ADMIN no ve los botones de emisión de certificados', async ({ page }) => {
+    await login(page, ADMIN_CI);
+    await abrirParticipantes(page, PROG_RESULTADOS);
+
+    await expect(page.locator('table tbody tr').first()).toBeVisible();
+    await expect(page.getByTestId('emitir-certificado')).toHaveCount(0);
+    await expect(page.getByTestId('emitir-lote')).toHaveCount(0);
+  });
+
+  test('21. GESTOR emite el certificado individual', async ({ page }) => {
+    await login(page, GESTOR_CI);
+    await abrirParticipantes(page, PROG_RESULTADOS);
+
+    const fila = page.locator('table tbody tr', { hasText: 'Carlos Garcia' });
+    await expect(fila).toHaveCount(1);
+    await fila.getByTestId('emitir-certificado').click();
+
+    await expect(page.getByText(/Certificado emitido: CERT-CAP-/)).toBeVisible({
+      timeout: 20000,
+    });
+    // Ya emitido: la fila deja de ofrecer la emisión.
+    await expect(fila.getByTestId('emitir-certificado')).toHaveCount(0);
+  });
+
+  test('22. GESTOR emite en lote a los aprobados restantes', async ({ page }) => {
+    await login(page, GESTOR_CI);
+    await abrirParticipantes(page, PROG_RESULTADOS);
+
+    const botonLote = page.getByTestId('emitir-lote');
+    await expect(botonLote).toBeVisible();
+    await botonLote.click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText(/aprobado\(s\) que aún no tienen certificado/)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Sí, emitir' }).click();
+
+    await expect(page.getByText(/Certificados emitidos: \d/)).toBeVisible({ timeout: 20000 });
+    // No quedan pendientes: el botón global desaparece.
+    await expect(page.getByTestId('emitir-lote')).toHaveCount(0);
+  });
+
+  test('23. Listado de certificados permite descargar el PDF', async ({ page }) => {
+    await login(page, GESTOR_CI);
+    await page.goto('/admin/sippci/capacitaciones/certificados');
+
+    await expect(page.getByRole('heading', { name: 'Certificados Emitidos' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Buscar' })).toBeVisible();
+    await expect(page.locator('table tbody tr').first()).toBeVisible();
+
+    const filas = await page.locator('table tbody tr').count();
+    expect(filas).toBeGreaterThanOrEqual(2);
+
+    const [descarga] = await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes('/certificados/') && r.url().includes('/descargar'),
+      ),
+      page.getByTestId('descargar-pdf').first().click(),
+    ]);
+    expect(descarga.status()).toBe(200);
+    expect(descarga.headers()['content-type'] ?? '').toContain('pdf');
+    await expect(page.getByText('Certificado descargado')).toBeVisible();
+  });
+
+  test('24. Validación pública: código real y código inexistente', async ({
+    page,
+    request,
+  }) => {
+    const headers = await apiAuth(request);
+    const res = await request.get(`${CERTIFICADOS_API}?limit=100`, { headers });
+    expect(res.ok()).toBeTruthy();
+    const body = (await res.json()) as { items: { codigo: string }[] };
+    expect(body.items.length).toBeGreaterThan(0);
+    const codigo = body.items[0].codigo;
+
+    await page.goto(`/validar-certificado-capacitacion/${codigo}`);
+    await expect(page.getByRole('heading', { name: 'Certificado Válido' })).toBeVisible();
+    await expect(page.getByText(codigo)).toBeVisible();
+    await expect(page.getByText('VIGENTE', { exact: true })).toBeVisible();
+
+    await page.goto('/validar-certificado-capacitacion/CERT-CAP-9999-NOEXISTE');
+    await expect(page.getByRole('heading', { name: 'Certificado No Válido' })).toBeVisible();
   });
 });

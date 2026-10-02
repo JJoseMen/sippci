@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EstadoProgramacion, Prisma } from '@prisma/client';
+import { EstadoParticipante, EstadoProgramacion, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CrearProgramacionDto } from './dto/crear-programacion.dto';
 import { ActualizarProgramacionDto } from './dto/actualizar-programacion.dto';
@@ -50,6 +50,11 @@ const INCLUDE_INSCRIPCION: Prisma.participante_programacionInclude = {
 const ESTADOS_APTOS_INSCRIPCION: EstadoProgramacion[] = [
   EstadoProgramacion.PROGRAMADO,
   EstadoProgramacion.REPROGRAMADO,
+];
+
+const ESTADOS_APTOS_RESULTADO: EstadoProgramacion[] = [
+  EstadoProgramacion.EN_CURSO,
+  EstadoProgramacion.FINALIZADO,
 ];
 
 @Injectable()
@@ -258,7 +263,6 @@ export class ProgramacionesService {
       where.participante = whereParticipante;
     }
 
-    if (query.asistencia !== undefined) where.asistencia = query.asistencia;
     if (query.aprobado !== undefined) where.aprobado = query.aprobado;
 
     const [items, total] = await Promise.all([
@@ -361,25 +365,69 @@ export class ProgramacionesService {
     participanteId: number,
     dto: ActualizarEstadoParticipanteDto,
   ) {
-    await this.obtener(programacionId);
+    const programacion = await this.obtener(programacionId);
+
+    if (!ESTADOS_APTOS_RESULTADO.includes(programacion.estado)) {
+      throw new BadRequestException(
+        `No se puede modificar el resultado de participantes en una programación ` +
+          `en estado ${programacion.estado}. ` +
+          `Estados aptos: [${ESTADOS_APTOS_RESULTADO.join(', ')}]`,
+      );
+    }
+
+    if (dto.estado === ('ABANDONO' as EstadoParticipante)) {
+      throw new BadRequestException(
+        'El estado ABANDONO ya no existe. Use INSCRITO, APROBADO o REPROBADO',
+      );
+    }
 
     const inscripcion = await this.prisma.participante_programacion.findUnique({
       where: {
         programacionId_participanteId: { programacionId, participanteId },
       },
+      include: INCLUDE_INSCRIPCION,
     });
     if (!inscripcion) throw new NotFoundException('Inscripción no encontrada');
 
+    if (inscripcion.certificadoId !== null) {
+      throw new BadRequestException(
+        'No se puede modificar: certificado ya emitido',
+      );
+    }
+
+    const estadoPrevia = inscripcion.participante.estado;
+    const yaTieneResultado = estadoPrevia !== EstadoParticipante.INSCRITO;
+    const cambiaEstado =
+      dto.estado !== undefined && dto.estado !== estadoPrevia;
+
+    if (yaTieneResultado && cambiaEstado && !dto.justificacion) {
+      throw new BadRequestException(
+        'La justificación es obligatoria al corregir un resultado previo',
+      );
+    }
+
     const hayCambios =
       dto.estado !== undefined ||
-      dto.asistencia !== undefined ||
       dto.aprobado !== undefined ||
       dto.puntaje !== undefined ||
-      dto.observaciones !== undefined;
+      dto.observaciones !== undefined ||
+      dto.justificacion !== undefined;
     if (!hayCambios) {
       throw new BadRequestException(
         'Debe indicar al menos un campo a actualizar',
       );
+    }
+
+    let aprobado: boolean | null | undefined = dto.aprobado;
+    if (dto.estado === EstadoParticipante.APROBADO) aprobado = true;
+    else if (dto.estado === EstadoParticipante.REPROBADO) aprobado = false;
+    else if (dto.estado === EstadoParticipante.INSCRITO) aprobado = null;
+
+    let observaciones = dto.observaciones;
+    if (dto.justificacion) {
+      const sello = `[Corrección] ${dto.justificacion}`;
+      const base = observaciones ?? inscripcion.observaciones;
+      observaciones = base ? `${base}\n${sello}` : sello;
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -393,10 +441,9 @@ export class ProgramacionesService {
       return tx.participante_programacion.update({
         where: { id: inscripcion.id },
         data: {
-          asistencia: dto.asistencia,
-          aprobado: dto.aprobado,
+          aprobado,
           puntaje: dto.puntaje,
-          observaciones: dto.observaciones,
+          observaciones,
         },
         include: INCLUDE_INSCRIPCION,
       });

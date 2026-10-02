@@ -3,7 +3,7 @@ export type NombreCurso = 'EXTINTORES' | 'PRIMEROS_AUXILIOS' | 'EVACUACION' | 'T
 export type EstadoProgramacion =
   'PROGRAMADO' | 'EN_CURSO' | 'FINALIZADO' | 'CANCELADO' | 'REPROGRAMADO';
 
-export type EstadoParticipante = 'INSCRITO' | 'APROBADO' | 'REPROBADO' | 'ABANDONO';
+export type EstadoParticipante = 'INSCRITO' | 'APROBADO' | 'REPROBADO';
 
 export interface Curso {
   id: number;
@@ -65,7 +65,6 @@ export interface InscripcionParticipante {
   participanteId: number;
   puntaje: number | null;
   aprobado: boolean | null;
-  asistencia: boolean | null;
   certificadoId: number | null;
   observaciones: string | null;
   createdAt: string;
@@ -127,7 +126,6 @@ export type ActualizarInstructorDto = Partial<CrearInstructorDto>;
 export interface QueryParticipanteProgramacionDto {
   search?: string;
   estado?: EstadoParticipante;
-  asistencia?: boolean;
   aprobado?: boolean;
   page?: number;
   limit?: number;
@@ -139,10 +137,10 @@ export interface InscribirParticipanteDto {
 
 export interface ActualizarEstadoParticipanteDto {
   estado?: EstadoParticipante;
-  asistencia?: boolean;
   aprobado?: boolean;
   puntaje?: number;
   observaciones?: string;
+  justificacion?: string;
 }
 
 export interface QueryParticipanteCatalogoDto {
@@ -157,6 +155,73 @@ export interface CrearParticipanteCatalogoDto {
   ci: string;
   email?: string;
   telefono?: string;
+}
+
+// ------------------------------------------------------------
+// Certificados de capacitación (FASE 3.4.B)
+// ------------------------------------------------------------
+
+export type EstadoCertificadoCapacitacion = 'EMITIDO' | 'VENCIDO' | 'REVOCADO';
+
+export type EstadoVigencia = 'VIGENTE' | 'POR_VENCER' | 'VENCIDO';
+
+export interface CertificadoCapacitacion {
+  id: number;
+  codigo: string;
+  participanteId: number;
+  programacionId: number;
+  cursoId: number;
+  instructorId: number | null;
+  emitidoEn: string;
+  vigenciaHasta: string;
+  rutaPdf: string | null;
+  qrUrl: string | null;
+  emitidoPorId: number | null;
+  estado: EstadoCertificadoCapacitacion;
+  curso?: Curso | null;
+  instructor?: Instructor | null;
+  participante?: ParticipanteCapacitacion | null;
+  programacion?: Programacion | null;
+  estadoVigencia?: EstadoVigencia;
+}
+
+export interface ResultadoLoteCertificado {
+  emitidos: number;
+  codigos: string[];
+  errores: { participanteId: number; mensaje: string }[];
+}
+
+export interface CertificadoCapacitacionValidacion {
+  valido: boolean;
+  vencido?: boolean;
+  codigo?: string;
+  participante?: { nombre: string; ci: string } | null;
+  curso?: { nombre: string; duracionHoras: number | null; modalidad: string } | null;
+  programacion?: { fechaInicio: string; lugar: string | null } | null;
+  instructor?: { nombre: string; apellido: string } | null;
+  fechaEmision?: string;
+  fechaVigencia?: string;
+  estado?: EstadoCertificadoCapacitacion;
+  mensaje: string;
+}
+
+export interface QueryCertificadoCapacitacionDto {
+  search?: string;
+  programacionId?: number;
+  cursoId?: number;
+  estado?: EstadoCertificadoCapacitacion;
+  page?: number;
+  limit?: number;
+}
+
+export interface EmitirCertificadoCapacitacionDto {
+  programacionId: number;
+  participanteId: number;
+  observaciones?: string;
+}
+
+export interface EmitirLoteCertificadoDto {
+  programacionId: number;
 }
 
 // ------------------------------------------------------------

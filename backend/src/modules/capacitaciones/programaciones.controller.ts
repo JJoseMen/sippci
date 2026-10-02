@@ -112,7 +112,9 @@ export class ProgramacionesController {
 
   @Put(':id/participantes/:participanteId/estado')
   @ApiOperation({
-    summary: 'Actualizar asistencia, calificacion o estado del participante',
+    summary:
+      'Aprobar, reprobar o corregir resultado del participante. ' +
+      'Requiere programacion EN_CURSO o FINALIZADO y justificacion al corregir',
   })
   async actualizarEstadoParticipante(
     @Param('id', ParseIntPipe) id: number,

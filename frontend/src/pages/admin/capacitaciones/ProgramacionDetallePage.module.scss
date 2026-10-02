@@ -61,6 +61,19 @@
   gap: $spacing-2;
 }
 
+.filtrosResultado {
+  display: flex;
+  gap: $spacing-2;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.conteos {
+  font-size: $font-size-sm;
+  color: $color-gray-600;
+  margin-bottom: $spacing-3;
+}
+
 .nombreParticipante {
   font-weight: 600;
   color: $color-gray-900;

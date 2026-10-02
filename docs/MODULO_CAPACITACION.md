@@ -15,7 +15,13 @@ Gestionar la inscripción, participación y certificación de capacitaciones obl
 | **3.3.B — Backend Participantes** | Inscripción/desinscripción + catálogo de participantes | ✅ **Completada** |
 | **3.3.C — Frontend** | Programaciones (listado/detalle/modales) + Participantes | ✅ **Completada** |
 | **3.3.D — Frontend Instructores** | Listado, alta/edición y desactivación de instructores | ✅ **Completada** |
-| 3.4+ | Certificados PDF+QR, aprobación manual, reportes, formulario ciudadano | ⬜ Pendiente |
+| **3.4 — Aprobación de participantes** | Botones Aprobar/Reprobar, validación de programación, justificación al corregir; se eliminaron `asistencia` y `ABANDONO` | ✅ **Completada** |
+| 3.4.B+ | Certificados PDF+QR, reportes, formulario ciudadano | ⬜ Pendiente |
+
+> **Nota (FASE 3.4):** los cursos son de **una sola sesión**, por lo que se
+> eliminaron de raíz la columna `participante_programacion.asistencia` y el
+> valor `ABANDONO` del enum `EstadoParticipante`. `puntaje` se conserva en BD
+> como **deuda futura**: no se edita desde la UI.
 
 ---
 
@@ -83,17 +89,19 @@ Base: `/api/admin/sippci/capacitaciones` (prefijo compartido por `InstructoresCo
 | PUT `/programaciones/:id/finalizar` | ✅ | 3.3.A | `EN_CURSO` → `FINALIZADO` |
 | DELETE `/programaciones/:id` | ➖ | — | No existe a propósito: la baja es por `cancelar` |
 | **Participantes — inscripción en una programación** | | | |
-| GET `/programaciones/:id/participantes` | ✅ | 3.3.B | Filtros `search`, `estado`, `asistencia`, `aprobado` + paginación |
+| GET `/programaciones/:id/participantes` | ✅ | 3.3.B | Filtros `search`, `estado`, `aprobado` + paginación (`asistencia` eliminado en 3.4) |
 | POST `/programaciones/:id/participantes` | ✅ | 3.3.B | Valida estado apto (`PROGRAMADO`/`REPROGRAMADO`), cupo y duplicado → 409 |
-| PUT `/programaciones/:id/participantes/:participanteId/estado` | ✅ | 3.3.B | Actualiza `estado`, `asistencia`, `aprobado`, `puntaje`, `observaciones` |
+| PUT `/programaciones/:id/participantes/:participanteId/estado` | ✅ | 3.3.B / **3.4** | `estado`, `aprobado`, `puntaje`, `observaciones`, `justificacion`. Requiere programación `EN_CURSO`/`FINALIZADO`; bloquea con certificado emitido; `APROBADO`⇒`aprobado=true`, `REPROBADO`⇒`aprobado=false` |
 | DELETE `/programaciones/:id/participantes/:participanteId` | ✅ | 3.3.B | Desinscribir; bloqueado si ya hay certificado |
 | **Participantes — catálogo** | | | |
 | GET `/participantes` | ✅ | 3.3.B | Catálogo: `search`, `estado`, paginación |
 | POST `/participantes` | ✅ | 3.3.B | Crear en el catálogo; CI repetido → 409 |
-| **Certificados** | | | |
-| POST `/certificados/emitir` | ❌ | 3.4 | Emitir certificado individual (PDF+QR) |
-| POST `/certificados/emitir-lote` | ❌ | 3.4 | Emisión masiva por programación |
-| GET `/certificados/:codigo/descargar` | ❌ | 3.4 | Descargar PDF |
+| **Certificados** (base `/api/admin/sippci/capacitaciones/certificados`) | | | |
+| GET `/certificados` | ✅ | 3.4.B | Listado: `search`, `estado`, `desde`, `hasta`, paginación. Roles: GESTOR + ADMIN |
+| POST `/certificados/emitir` | ✅ | 3.4.B | Individual. Programación `EN_CURSO`/`FINALIZADO` + participante `APROBADO` + sin certificado (409 si ya existe). GESTOR |
+| POST `/certificados/emitir-lote` | ✅ | 3.4.B | Emisión masiva de los aprobados sin certificado. Devuelve `{emitidos, codigos, errores}`. GESTOR |
+| GET `/certificados/:codigo/descargar` | ✅ | 3.4.B | PDF (`application/pdf`); regenera el archivo si falta en disco. Roles: GESTOR + ADMIN |
+| GET `/public/validar-certificado-capacitacion/:codigo` | ✅ | 3.4.B | **Sin autenticación**. `{valido, vencido, participante, curso, programacion, instructor, ...}` |
 | **Reportes** | | | |
 | GET `/reportes/participantes-por-curso` | ❌ | 3.5 | |
 | GET `/reportes/asistencia` | ❌ | 3.5 | |
@@ -157,7 +165,7 @@ Migración `20260930160000_add_capacitacion_tables` — **solo adiciones**, nada
 |-------|-----------|----------------------|
 | `instructores` | Datos de instructores (CI, nombre, especialidad, habilitado) | `ci` **@unique**, `@@index([activo])` |
 | `programacion_curso` | Fechas, cupo, instructor, lugar, estado | FK→`cursos`, FK→`instructores`, índices `cursoId`/`instructorId`/`estado` |
-| `participante_programacion` | Inscripción a una programación: puntaje, aprobado, asistencia, certificado | **@@unique([programacionId, participanteId])**, índices `participanteId`/`certificadoId` |
+| `participante_programacion` | Inscripción a una programación: puntaje, aprobado, certificado (`asistencia` eliminada en 3.4) | **@@unique([programacionId, participanteId])**, índices `participanteId`/`certificadoId` |
 | `certificado_capacitacion` | Certificados tipo CAPACITACION con QR, PDF, vigencia, estado | `codigo` **@unique**, FK→`cursos`, FK→`instructores`, índices `participanteId`/`programacionId`/`estado` |
 
 **Enums nuevos:**
@@ -177,6 +185,27 @@ enum EstadoCertificadoCapacitacion {
   REVOCADO  // anulado manualmente
 }
 ```
+
+**Enum de participantes (estado actual tras FASE 3.4):**
+
+```prisma
+enum EstadoParticipante {
+  INSCRITO   // pendiente de resultado
+  APROBADO   // aprobado manualmente por el gestor
+  REPROBADO  // reprobado manualmente por el gestor
+  // ❌ ABANDONO eliminado en FASE 3.4 (curso de una sola sesión)
+}
+```
+
+### FASE 3.4 — Migraciones de aprobación (✅ aplicadas)
+
+| Migración | Qué hace |
+|-----------|----------|
+| `20261002013137_remove_asistencia_participante` | `ALTER TABLE "participante_programacion" DROP COLUMN "asistencia";` |
+| `20261002013300_remove_abandono_estado_participante` | Recrea el enum `EstadoParticipante` sin `ABANDONO` y convierte **ambas** columnas que lo usan: `participantes_capacitacion.estado` y `participantes_cursos.estado` (PostgreSQL no permite borrar un valor de un ENUM; además hay que dropear/restaurar el `DEFAULT 'INSCRITO'`, que estaba tipado con el tipo viejo). |
+
+Verificado antes de migrar: `0` filas con `estado = 'ABANDONO'` y `0` filas con
+`asistencia IS NOT NULL`.
 
 **Migración 1 (FASE 3.1):** `20260930150000_add_unique_curso_nombre` → `CREATE UNIQUE INDEX "cursos_nombre_key" ON "cursos"("nombre")`.
 
@@ -218,13 +247,18 @@ enum EstadoCertificadoCapacitacion {
 └─────────────────────────┬───────────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 5. PARTICIPANTE asiste a capacitación (presencial/virtual)      │
-│    → GESTOR registra asistencia (ASISTIO / NO_ASISTIO)          │
+│ 5. GESTOR aprueba/reprueba participantes (curso de 1 sesión)    │
+│    → PUT /programaciones/:id/participantes/:pid/estado          │
+│    → Solo en programación EN_CURSO o FINALIZADO                 │
+│    → APROBADO ⇒ aprobado=true / REPROBADO ⇒ aprobado=false      │
+│    → Corregir un resultado previo exige justificación           │
+│    → NO hay asistencia ni ABANDONO (FASE 3.4)                   │
 └─────────────────────────┬───────────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │ 6. GESTOR emite certificado (POST /certificados/emitir)         │
 │    → Genera PDF + QR + hash                                     │
+│    → Solo para participantes en estado APROBADO                 │
 │    → Marca certificadoEmitido = true                            │
 │    → Cambia estado solicitud → CERTIFICADO_EMITIDO              │
 └─────────────────────────────────────────────────────────────────┘
@@ -244,7 +278,7 @@ enum EstadoCertificadoCapacitacion {
 | CRUD `programacion_curso` (endpoints) | ✅ Resuelto (FASE 3.3.A) | 3.1 |
 | Inscripción / desinscripción + catálogo de participantes | ✅ Resuelto (FASE 3.3.B) | 3.3.B |
 | Servicios/DTOs para las tablas nuevas | ✅ Resuelto (FASE 3.3.A / 3.3.B) | 3.2 |
-| Aprobación manual participantes | ✅ Resuelto (FASE 3.3.B) — vía `PUT .../participantes/:pid/estado` (sin endpoints dedicados `aprobar`/`reprobar`) | 3.2 |
+| Aprobación manual participantes | ✅ Resuelto (FASE 3.3.B, **pulido en FASE 3.4**) — vía `PUT .../participantes/:pid/estado` (sin endpoints dedicados `aprobar`/`reprobar`) | 3.2 |
 | Frontend Programaciones (listado, detalle, modales) | ✅ Resuelto (FASE 3.3.C) | 3.6+ |
 | Frontend Participantes (catálogo, inscripción, edición) | ✅ Resuelto (FASE 3.3.C) | 3.7+ |
 | Frontend Instructores (listado, alta/edición, desactivación) | ✅ Resuelto (FASE 3.3.D) | 3.6+ |
@@ -252,24 +286,29 @@ enum EstadoCertificadoCapacitacion {
 | Router frontend (rutas de capacitación) | ✅ Resuelto (FASE 3.3.C / 3.3.D) | 3.6+ |
 | Tests e2e de capacitación | ✅ Resuelto — `frontend/e2e/capacitaciones.spec.ts` | 3.5 |
 | POST/PUT/DELETE `/cursos` | ❌ Descartado (decisión conservadora: cursos fijos) | — |
-| Certificados PDF+QR (tipo CAPACITACION) | ❌ Pendiente | 3.4 |
+| Certificados PDF+QR (tipo CAPACITACION) | ❌ Pendiente | 3.4.B |
 | Reportes de capacitación | ❌ Pendiente | 3.5 |
 | Formulario ciudadano / catálogo público | ❌ Pendiente | 3.9 |
-| Reactivar instructor (soft delete reversible) | ❌ Pendiente — `ActualizarInstructorDto` no acepta `activo` | 3.4+ |
+| Reactivar instructor (soft delete reversible) | ✅ Resuelto — `ActualizarInstructorDto` **sí acepta** `activo` (solo API/tests; la UI no expone la opción) | 3.4+ |
 | Renovación capacitación (no definida) | ❌ Pendiente | 3.7+ |
 | Endpoints ciudadanos dedicados (`/ciudadano/capacitaciones/*`) | ❌ Pendiente | 3.2 |
 | Unificar `participantes_capacitacion.cursoId` (legacy) con `programacion_curso` | ❌ Pendiente — se conserva legacy | 3.2+ |
 | Prefijo de rutas `admin/capacitaciones` | ⚠️ Parcial — los controllers nuevos ya usan el prefijo; `CapacitacionesController` (legacy) sigue sin él | 3.2+ |
 | Submenús anidados en `AdminSidebar` para ADMIN | ❌ Pendiente — bug preexistente; el menú ADMIN de capacitación son enlaces planos | 3.4+ |
-| Seed de fixtures de capacitación (programaciones, participantes, instructores) | ❌ Pendiente — hoy se crearon a mano; ver §8 | 3.4+ |
+| Seed de fixtures de capacitación (programaciones, participantes, instructores) | ✅ Resuelto (FASE 3.3) — `backend/prisma/seed-capacitaciones-completo.ts` (idempotente, **fuera** de `prisma db seed`; ver §8) | 3.4+ |
+| **Aprobación de participantes (pulido)** | ✅ Resuelto (FASE 3.4) — botones Aprobar/Reprobar, validación de programación, justificación al corregir; `asistencia` y `ABANDONO` eliminados | 3.4 |
+| Aprobación por lote | ❌ Pendiente — decisión: individual en 3.4, lote en fase futura | 3.6+ |
+| Edición de `puntaje` desde la UI | ❌ Pendiente — la columna existe en BD y el DTO la acepta; la UI no la expone | 3.6+ |
+| Filtro/listado de aprobados-reprobados (`GET /reportes/aprobados-reprobados`) | ❌ Pendiente | 3.5 |
 
 ---
 
 ## 8. Entorno reproducible
 
-Cualquier persona debe poder reconstruir la BD de desarrollo desde cero y correr los 30 tests E2E.
-**Hoy falta un paso manual**: los fixtures de capacitación listados más abajo (§*Fixtures*) no
-los crea ningún seed (deuda registrada en §7).
+Cualquier persona debe poder reconstruir la BD de desarrollo desde cero y correr los **35** tests E2E.
+**Falta un paso manual**: los fixtures de capacitación listados más abajo (§*Fixtures*) no
+los crea `prisma db seed`; se cargan con `npx ts-node prisma/seed-capacitaciones-completo.ts`
+(deuda registrada en §7).
 
 ### Resetear la BD
 

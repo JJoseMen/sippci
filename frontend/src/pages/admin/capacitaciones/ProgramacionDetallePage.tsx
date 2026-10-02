@@ -8,7 +8,6 @@ import {
   Badge,
   Button,
   Input,
-  Select,
   Spinner,
   Pagination,
   Tabs,
@@ -16,6 +15,7 @@ import {
 } from '@/components/ui';
 import { EmptyState } from '@/components/shared/EmptyState/EmptyState';
 import { programacionesService } from '@/services/programaciones.service';
+import { certificadosCapacitacionService } from '@/services/certificados-capacitacion.service';
 import { capacitacionesService } from '@/services/capacitaciones.service';
 import { instructoresService } from '@/services/instructores.service';
 import { useAuthStore } from '@/stores/auth.store';
@@ -35,6 +35,7 @@ import { ReprogramarModal } from './components/ReprogramarModal';
 import { InscribirParticipanteModal } from './components/InscribirParticipanteModal';
 import { EditarParticipanteModal } from './components/EditarParticipanteModal';
 import { ConfirmarAccionModal } from './components/ConfirmarAccionModal';
+import { JustificacionModal } from './components/JustificacionModal';
 import {
   ETIQUETA_ESTADO,
   VARIANTE_ESTADO,
@@ -45,27 +46,15 @@ import {
   puedeGestionarParticipantes,
   puedeIniciar,
   puedeReprogramar,
+  puedeResolverResultados,
 } from './programacion.utils';
 import styles from './ProgramacionDetallePage.module.scss';
 
-const OPCIONES_SI_NO = [
-  { value: '', label: 'Asistencia: todas' },
-  { value: 'true', label: 'Asistió' },
-  { value: 'false', label: 'No asistió' },
-];
-
-const OPCIONES_APROBADO = [
-  { value: '', label: 'Aprobación: todas' },
-  { value: 'true', label: 'Aprobados' },
-  { value: 'false', label: 'Reprobados' },
-];
-
-const OPCIONES_ESTADO = [
-  { value: '', label: 'Todos los estados' },
-  { value: 'INSCRITO', label: 'Inscrito' },
-  { value: 'APROBADO', label: 'Aprobado' },
-  { value: 'REPROBADO', label: 'Reprobado' },
-  { value: 'ABANDONO', label: 'Abandono' },
+const FILTROS_RESULTADO: { value: EstadoParticipante | ''; label: string }[] = [
+  { value: '', label: 'Todos' },
+  { value: 'APROBADO', label: 'Aprobados' },
+  { value: 'REPROBADO', label: 'Reprobados' },
+  { value: 'INSCRITO', label: 'Pendientes' },
 ];
 
 function Dato({ label, valor }: { label: string; valor: ReactNode }) {
@@ -132,8 +121,15 @@ interface ParticipantesProps {
   onCambio: () => void;
 }
 
+interface Resolucion {
+  inscripcion: InscripcionParticipante;
+  nuevoEstado: EstadoParticipante;
+  justificacion?: string;
+}
+
 function ParticipantesSection({ programacion, esGestor, onCambio }: ParticipantesProps) {
   const gestionable = puedeGestionarParticipantes(programacion.estado);
+  const resoluble = puedeResolverResultados(programacion.estado);
 
   const [items, setItems] = useState<InscripcionParticipante[]>([]);
   const [total, setTotal] = useState(0);
@@ -143,14 +139,44 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [estado, setEstado] = useState('');
-  const [asistencia, setAsistencia] = useState('');
-  const [aprobado, setAprobado] = useState('');
+  const [resultado, setResultado] = useState('');
+
+  const [conteos, setConteos] = useState({ aprobados: 0, reprobados: 0, pendientes: 0 });
+  const [pendientesCertificado, setPendientesCertificado] = useState(0);
 
   const [modalInscribir, setModalInscribir] = useState(false);
+  const [modalLote, setModalLote] = useState(false);
   const [editando, setEditando] = useState<InscripcionParticipante | null>(null);
   const [desinscribiendo, setDesinscribiendo] = useState<InscripcionParticipante | null>(null);
+  const [justificando, setJustificando] = useState<Resolucion | null>(null);
+  const [resolviendo, setResolviendo] = useState<Resolucion | null>(null);
   const [accionCargando, setAccionCargando] = useState(false);
+
+  const fetchConteos = useCallback(async () => {
+    try {
+      const res = await programacionesService.listarParticipantes(programacion.id, {
+        page: 1,
+        limit: 100,
+      });
+      let aprobados = 0;
+      let reprobados = 0;
+      let pendientes = 0;
+      let sinCertificado = 0;
+      for (const item of res.items) {
+        const est = item.participante?.estado;
+        if (est === 'APROBADO') {
+          aprobados += 1;
+          if (item.certificadoId == null) sinCertificado += 1;
+        } else if (est === 'REPROBADO') reprobados += 1;
+        else pendientes += 1;
+      }
+      setConteos({ aprobados, reprobados, pendientes });
+      setPendientesCertificado(sinCertificado);
+    } catch {
+      setConteos({ aprobados: 0, reprobados: 0, pendientes: 0 });
+      setPendientesCertificado(0);
+    }
+  }, [programacion.id]);
 
   const fetchParticipantes = useCallback(
     async (p: number) => {
@@ -160,9 +186,7 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
           page: p,
           limit,
           ...(search ? { search } : {}),
-          ...(estado ? { estado: estado as EstadoParticipante } : {}),
-          ...(asistencia ? { asistencia: asistencia === 'true' } : {}),
-          ...(aprobado ? { aprobado: aprobado === 'true' } : {}),
+          ...(resultado ? { estado: resultado as EstadoParticipante } : {}),
         });
         setItems(res.items);
         setTotal(res.total);
@@ -175,19 +199,23 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
         setLoading(false);
       }
     },
-    [programacion.id, limit, search, estado, asistencia, aprobado],
+    [programacion.id, limit, search, resultado],
   );
 
   useEffect(() => {
     fetchParticipantes(1);
   }, [fetchParticipantes]);
 
+  useEffect(() => {
+    fetchConteos();
+  }, [fetchConteos]);
+
   const ejecutar = async (fn: () => Promise<unknown>, etiqueta: string) => {
     setAccionCargando(true);
     try {
       await fn();
       toast.success(etiqueta);
-      await fetchParticipantes(page);
+      await Promise.all([fetchParticipantes(page), fetchConteos()]);
       onCambio();
     } catch (err) {
       toast.error(mensajeError(err, 'No se pudo completar la acción'));
@@ -195,7 +223,63 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
     } finally {
       setAccionCargando(false);
       setDesinscribiendo(null);
+      setResolviendo(null);
+      setJustificando(null);
     }
+  };
+
+  const emitirCertificado = async (inscripcion: InscripcionParticipante) => {
+    setAccionCargando(true);
+    try {
+      const cert = await certificadosCapacitacionService.emitir({
+        programacionId: programacion.id,
+        participanteId: inscripcion.participanteId,
+      });
+      toast.success(`Certificado emitido: ${cert.codigo}`);
+      await Promise.all([fetchParticipantes(page), fetchConteos()]);
+      onCambio();
+    } catch (err) {
+      toast.error(mensajeError(err, 'No se pudo emitir el certificado'));
+    } finally {
+      setAccionCargando(false);
+    }
+  };
+
+  const emitirLote = async () => {
+    setAccionCargando(true);
+    try {
+      const res = await certificadosCapacitacionService.emitirLote({
+        programacionId: programacion.id,
+      });
+      if (res.emitidos > 0) {
+        toast.success(`Certificados emitidos: ${res.emitidos}`);
+      } else {
+        toast.info('No había aprobados sin certificado');
+      }
+      if (res.errores.length > 0) {
+        toast.error(`No se pudo emitir en ${res.errores.length} participante(s)`);
+      }
+      await Promise.all([fetchParticipantes(page), fetchConteos()]);
+      onCambio();
+    } catch (err) {
+      toast.error(mensajeError(err, 'No se pudieron emitir los certificados'));
+    } finally {
+      setAccionCargando(false);
+      setModalLote(false);
+    }
+  };
+
+  const solicitarResolucion = (
+    inscripcion: InscripcionParticipante,
+    nuevoEstado: EstadoParticipante,
+  ) => {
+    const estadoPrevia = inscripcion.participante?.estado;
+    const base: Resolucion = { inscripcion, nuevoEstado };
+    if (estadoPrevia && estadoPrevia !== 'INSCRITO') {
+      setJustificando(base);
+      return;
+    }
+    setResolviendo(base);
   };
 
   const totalPages = Math.ceil(total / limit) || 1;
@@ -229,17 +313,6 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
         },
       },
       {
-        header: 'Asistió',
-        cell: ({ row }) =>
-          row.original.asistencia === null ? (
-            <span className={styles.sino}>—</span>
-          ) : (
-            <span className={`${styles.sino} ${row.original.asistencia ? styles.si : styles.no}`}>
-              {row.original.asistencia ? 'Sí' : 'No'}
-            </span>
-          ),
-      },
-      {
         header: 'Resultado',
         cell: ({ row }) =>
           row.original.aprobado === null ? (
@@ -262,6 +335,40 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
         header: 'Acciones',
         cell: ({ row }) => (
           <div className={styles.accionesCelda}>
+            {esGestor && resoluble && row.original.certificadoId == null && (
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={accionCargando}
+                onClick={() => solicitarResolucion(row.original, 'APROBADO')}
+              >
+                Aprobar
+              </Button>
+            )}
+            {esGestor && resoluble && row.original.certificadoId == null && (
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={accionCargando}
+                onClick={() => solicitarResolucion(row.original, 'REPROBADO')}
+              >
+                Reprobar
+              </Button>
+            )}
+            {esGestor &&
+              resoluble &&
+              row.original.participante?.estado === 'APROBADO' &&
+              row.original.certificadoId == null && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-testid="emitir-certificado"
+                  disabled={accionCargando}
+                  onClick={() => emitirCertificado(row.original)}
+                >
+                  Emitir certificado
+                </Button>
+              )}
             {esGestor && gestionable && (
               <Button
                 size="sm"
@@ -286,7 +393,7 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
         ),
       },
     ],
-    [esGestor, gestionable, accionCargando],
+    [esGestor, gestionable, resoluble, accionCargando, emitirCertificado],
   );
 
   const inscritos = programacion._count?.participantes ?? 0;
@@ -309,8 +416,24 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
           <Button size="sm" disabled={!gestionable} onClick={() => setModalInscribir(true)}>
             Inscribir participante
           </Button>
+          {esGestor && resoluble && pendientesCertificado > 0 && (
+            <Button
+              size="sm"
+              variant="primary"
+              data-testid="emitir-lote"
+              disabled={accionCargando}
+              onClick={() => setModalLote(true)}
+            >
+              Emitir a todos los aprobados
+            </Button>
+          )}
         </div>
       )}
+
+      <div className={styles.conteos} data-testid="conteos-resultados">
+        {conteos.aprobados} aprobados / {conteos.reprobados} reprobados /{' '}
+        {conteos.pendientes} pendientes
+      </div>
 
       <div className={styles.filters}>
         <Input
@@ -319,21 +442,18 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
           onChange={(e) => setSearchInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput.trim())}
         />
-        <Select
-          value={estado}
-          onChange={(e) => setEstado(e.target.value)}
-          options={OPCIONES_ESTADO}
-        />
-        <Select
-          value={asistencia}
-          onChange={(e) => setAsistencia(e.target.value)}
-          options={OPCIONES_SI_NO}
-        />
-        <Select
-          value={aprobado}
-          onChange={(e) => setAprobado(e.target.value)}
-          options={OPCIONES_APROBADO}
-        />
+        <div className={styles.filtrosResultado}>
+          {FILTROS_RESULTADO.map((opcion) => (
+            <Button
+              key={opcion.value || 'todos'}
+              size="sm"
+              variant={resultado === opcion.value ? 'primary' : 'secondary'}
+              onClick={() => setResultado(opcion.value)}
+            >
+              {opcion.label}
+            </Button>
+          ))}
+        </div>
         <div className={styles.filterActions}>
           <Button variant="secondary" size="sm" onClick={() => setSearch(searchInput.trim())}>
             Buscar
@@ -344,9 +464,7 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
             onClick={() => {
               setSearchInput('');
               setSearch('');
-              setEstado('');
-              setAsistencia('');
-              setAprobado('');
+              setResultado('');
             }}
           >
             Limpiar
@@ -430,6 +548,68 @@ function ParticipantesSection({ programacion, esGestor, onCambio }: Participante
           );
         }}
       />
+
+      <ConfirmarAccionModal
+        isOpen={modalLote}
+        titulo="Emitir certificados en lote"
+        mensaje={`¿Emitir certificado a los ${pendientesCertificado} participante(s) aprobado(s) que aún no tienen certificado?`}
+        etiquetaConfirmar="Sí, emitir"
+        confirmarCargando={accionCargando}
+        onClose={() => setModalLote(false)}
+        onConfirmar={emitirLote}
+      />
+
+      <JustificacionModal
+        isOpen={Boolean(justificando)}
+        titulo={
+          justificando?.nuevoEstado === 'APROBADO'
+            ? 'Corregir a aprobado'
+            : 'Corregir a reprobado'
+        }
+        mensaje={`Este participante ya tiene resultado. Indique el motivo para cambiarlo a`}
+        nombreParticipante={justificando?.inscripcion.participante?.nombre ?? ''}
+        onClose={() => setJustificando(null)}
+        onConfirmar={async (justificacion) => {
+          if (!justificando) return;
+          setResolviendo({ ...justificando, justificacion });
+          setJustificando(null);
+        }}
+      />
+
+      <ConfirmarAccionModal
+        isOpen={Boolean(resolviendo)}
+        titulo={resolviendo?.nuevoEstado === 'APROBADO' ? 'Aprobar participante' : 'Reprobar participante'}
+        mensaje={`¿Confirma marcar como ${
+          resolviendo?.nuevoEstado === 'APROBADO' ? 'APROBADO' : 'REPROBADO'
+        } a ${
+          resolviendo?.inscripcion.participante?.nombre ??
+          `#${resolviendo?.inscripcion.participanteId}`
+        }?`}
+        etiquetaConfirmar={
+          resolviendo?.nuevoEstado === 'APROBADO' ? 'Sí, aprobar' : 'Sí, reprobar'
+        }
+        confirmarCargando={accionCargando}
+        onClose={() => setResolviendo(null)}
+        onConfirmar={async () => {
+          if (!resolviendo) return;
+          await ejecutar(
+            () =>
+              programacionesService.actualizarParticipante(
+                programacion.id,
+                resolviendo.inscripcion.participanteId,
+                {
+                  estado: resolviendo.nuevoEstado,
+                  ...(resolviendo.justificacion
+                    ? { justificacion: resolviendo.justificacion }
+                    : {}),
+                },
+              ),
+            resolviendo.nuevoEstado === 'APROBADO'
+              ? 'Participante aprobado'
+              : 'Participante reprobado',
+          );
+        }}
+      />
     </Card>
   );
 }
@@ -500,7 +680,10 @@ export function ProgramacionDetallePage() {
     }
   };
 
-  if (loading) return <Spinner size="md" />;
+  // Solo bloquea la primera carga. Si se desmontara en cada recarga se
+  // perdería la pestaña activa (Tabs guarda su estado interno) y todos los
+  // filtros/página de Participantes.
+  if (loading && !programacion) return <Spinner size="md" />;
 
   if (!programacion) {
     return (

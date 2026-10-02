@@ -134,8 +134,10 @@ PROGRAMACION      GESTOR crea programación:
                   [INSTRUCTOR entrega lista de aprobados/reprobados al gestor]
 
 APROBACION        GESTOR marca manualmente cada participante:
-                  ├─ ✅ Aprobar  → estado APROBADO
-                  └─ ❌ Reprobar → estado REPROBADO
+                  ├─ ✅ Aprobar  → estado APROBADO  (aprobado = true)
+                  └─ ❌ Reprobar → estado REPROBADO (aprobado = false)
+                  → solo en programación EN_CURSO o FINALIZADO
+                  → corregir un resultado previo exige justificación
 
 CERTIFICADO       GESTOR emite certificados a los aprobados
                   → PDF + QR propio (tabla propia)
@@ -162,7 +164,8 @@ VENCIDO (2 años después) — Renovación: pendiente de definir
 
 #### participantes_capacitacion
 - Vinculados a una solicitud
-- Estado: INSCRITO | APROBADO | REPROBADO | ABANDONO
+- Estado: INSCRITO | APROBADO | REPROBADO
+  (se eliminó `ABANDONO` en FASE 3.4 — los cursos son de una sola sesión)
 - Campo certificadoEmitido boolean
 
 #### participantes_cursos (N:M)
@@ -186,9 +189,10 @@ VENCIDO (2 años después) — Renovación: pendiente de definir
 
 #### participante_programacion
 - id, programacionId, participanteId
-- puntaje, aprobado, asistencia
+- puntaje, aprobado
+  (`asistencia` se eliminó en FASE 3.4 — los cursos son de una sola sesión)
 - certificadoId
-- observaciones String?
+- observaciones String? — acumula la justificación de correcciones
 - createdAt, updatedAt
 
 #### certificado_capacitacion (TABLA NUEVA — NO reutiliza certificados)
@@ -246,9 +250,11 @@ Base: /api/admin/sippci/capacitaciones
 - ➖ DELETE /programaciones/:id — no existe a propósito; la baja es por `cancelar`
 
 ### Participantes — inscripción en programación (FASE 3.3.B ✅)
-- ✅ GET /programaciones/:id/participantes — filtros `search`, `estado`, `asistencia`, `aprobado`
+- ✅ GET /programaciones/:id/participantes — filtros `search`, `estado`, `aprobado`
+  (`asistencia` se eliminó en FASE 3.4)
 - ✅ POST /programaciones/:id/participantes — valida estado apto, cupo y duplicado (409)
-- ✅ PUT /programaciones/:id/participantes/:participanteId/estado — `estado`, `asistencia`, `aprobado`, `puntaje`, `observaciones`
+- ✅ PUT /programaciones/:id/participantes/:participanteId/estado — `estado`, `aprobado`,
+  `puntaje`, `observaciones`, `justificacion` (ver §Aprobación manual)
 - ✅ DELETE /programaciones/:id/participantes/:participanteId — bloqueado si hay certificado
 
 ### Participantes — catálogo (FASE 3.3.B ✅)
@@ -263,13 +269,32 @@ Base: /api/admin/sippci/capacitaciones
 - 🔜 GET /solicitudes/:codigo/lista-excel/descargar ⚠️ nuevo
 - ✅ GET /solicitudes/:codigo/costo-total
 
-### Aprobación manual (resuelta en FASE 3.3.B ✅)
+### Aprobación manual (pulida en FASE 3.4 ✅)
 - ✅ Vía `PUT /programaciones/:id/participantes/:participanteId/estado`
-  (`estado = APROBADO | REPROBADO`) — no se crearon endpoints dedicados
+  (`estado = APROBADO | REPROBADO`) — no existen endpoints dedicados
   `aprobar` / `reprobar`, se reutiliza el endpoint genérico de estado.
-- ✅ GET /programaciones/:id/participantes?estado=APROBADO|REPROBADO
+- ✅ GET /programaciones/:id/participantes?estado=APROBADO|REPROBADO|INSCRITO
+- ✅ Validaciones (FASE 3.4):
+  - Programación debe estar `EN_CURSO` o `FINALIZADO` → si no, **400**.
+  - Certificado ya emitido (`certificadoId != null`) → **400**.
+  - `estado = APROBADO` fuerza `aprobado = true`;
+    `estado = REPROBADO` fuerza `aprobado = false`;
+    `estado = INSCRITO` deja `aprobado = null` (pendiente).
+  - Corregir un resultado previo (el participante no está `INSCRITO`)
+    exige `justificacion` de **10 a 500 caracteres** → si no, **400**.
+  - La justificación se guarda en `observaciones` con prefijo `[Corrección]`
+    (se concatena si ya había observaciones).
+- ✅ Frontend: botones **Aprobar** (verde) y **Reprobar** (rojo) por fila,
+  visibles solo para GESTOR, en programación `EN_CURSO`/`FINALIZADO` y sin
+  certificado. Filtros `Todos | Aprobados | Reprobados | Pendientes` con
+  contadores `X aprobados / Y reprobados / Z pendientes`.
+- 🗑️ FASE 3.4: se eliminaron de raíz `participante_programacion.asistencia`
+  y el valor `ABANDONO` de `EstadoParticipante` (migraciones
+  `20261002013137_remove_asistencia_participante` y
+  `20261002013300_remove_abandono_estado_participante`) — los cursos son de
+  una sola sesión, por lo que la asistencia y el abandono no aplican.
 
-### Certificados (FASE 3.5)
+### Certificados (FASE 3.4.B)
 - 🔜 POST /programaciones/:id/certificados/emitir
 - 🔜 GET /certificados
 - 🔜 GET /certificados/:codigo/descargar
@@ -290,12 +315,16 @@ frontend/src/pages/admin/capacitaciones/
 ├── ✅ InstructoresListPage.tsx        (FASE 3.3.D — listado + filtros + paginación)
 ├── ✅ ProgramacionesListPage.tsx      (FASE 3.3.C — listado + filtros + acciones)
 ├── ✅ ProgramacionDetallePage.tsx     (FASE 3.3.C — tabs de detalle + transiciones)
+│                                      FASE 3.4 — botones Aprobar/Reprobar,
+│                                      filtros Todos|Aprobados|Reprobados|Pendientes
+│                                      y contadores de resultados)
 ├── ✅ programacion.utils.ts           (estados, etiquetas, transiciones permitidas)
 ├── ✅ components/
 │   ├── ✅ ProgramacionFormModal.tsx   (crear / editar)
 │   ├── ✅ ReprogramarModal.tsx
 │   ├── ✅ InscribirParticipanteModal.tsx
-│   ├── ✅ EditarParticipanteModal.tsx (estado, asistencia, puntaje)
+│   ├── ✅ EditarParticipanteModal.tsx (estado, puntaje, observaciones, justificación)
+│   ├── ✅ JustificacionModal.tsx      (FASE 3.4 — obligatoria al corregir resultado)
 │   ├── ✅ InstructorFormModal.tsx     (alta / edición de instructores)
 │   └── ✅ ConfirmarAccionModal.tsx
 ├── ➖ InstructorFormPage.tsx          → resuelto con `InstructorFormModal`
@@ -307,9 +336,10 @@ frontend/src/pages/admin/capacitaciones/
 ├── 🔜 ParticipantesListPage.tsx
 ├── 🔜 SubirListaPage.tsx
 ├── 🔜 AprobadosReprobadosPage.tsx
-├── 🔜 CursosPage.tsx
-├── 🔜 PuntajesPage.tsx
-├── 🔜 CertificadosEmitidosPage.tsx
+├── ✅ CursosPage.tsx                    → solo lectura del catálogo fijo
+├── ✅ ListasPage.tsx                    → stub "en desarrollo" (ver PENDIENTES)
+├── ✅ PuntajesPage.tsx                  → stub "próximamente" (ver PENDIENTES)
+├── ✅ CertificadosEmitidosPage.tsx      → listado + descarga PDF + link público
 └── 🔜 ReportesPage.tsx
 
 ### Ciudadano/Empresa (logueado)
@@ -321,7 +351,7 @@ frontend/src/pages/ciudadano/capacitaciones/
 
 ### Público
 frontend/src/pages/public/
-└── 🔜 ValidarCertificadoCapacitacionPage.tsx
+└── ✅ ValidarCertificadoCapacitacionPage.tsx (clon independiente de ValidarCertificadoPage)
 
 🔜 = planificado, no implementado todavía.
 
@@ -345,13 +375,29 @@ opcional y queda como deuda de consistencia.
 | Tipo enum | PROFESIONAL | SIPPCI | CAPACITACION |
 | Titular | Persona natural | Establecimiento | Participante |
 | Código | CERT-YYYY-NNNN | CERT-SIPPCI-YYYY-NNNN | CERT-CAP-YYYY-NNNN |
-| PDF service | certificados-pdf.service.ts | Mismo (plantilla) | NUEVO servicio |
+| PDF service | certificados-pdf.service.ts | Mismo (plantilla) | `generarCertificadoCapacitacion()` en el mismo servicio |
 | QR endpoint | /validar-certificado/:codigo | Mismo | /validar-certificado-capacitacion/:codigo |
 | Tabla BD | certificados | certificados | certificado_capacitacion (NUEVA) |
 | Página validación | ValidarCertificadoPage | Misma | ValidarCertificadoCapacitacionPage |
 | Vigencia | 2 años | 2 años | 2 años |
+| Control de acceso | GESTOR_REGISTRO_PROFESIONAL (+ADMIN en listado/descarga) | GESTOR_CUMPLIMIENTO | GESTOR_CAPACITACIONES (+ADMIN en listado/descarga) |
 
 El certificado de capacitación es 100% independiente.
+
+### Estado FASE 3.4.B
+
+| Pieza | Estado |
+|-------|--------|
+| `POST /admin/sippci/capacitaciones/certificados/emitir` | ✅ |
+| `POST /admin/sippci/capacitaciones/certificados/emitir-lote` | ✅ |
+| `GET /admin/sippci/capacitaciones/certificados` | ✅ |
+| `GET /admin/sippci/capacitaciones/certificados/:codigo/descargar` | ✅ |
+| `GET /api/public/validar-certificado-capacitacion/:codigo` | ✅ `@Public()` |
+| PDF A4 apaisado con QR + instructor + vigencia | ✅ |
+| Botones "Emitir certificado" y "Emitir a todos los aprobados" | ✅ en `ProgramacionDetallePage` |
+| Listado `CertificadosEmitidosPage` | ✅ |
+| Página pública de validación | ✅ |
+| Revocación / re-emisión | ❌ fuera de alcance (documentado en PENDIENTES) |
 
 ---
 
@@ -366,11 +412,12 @@ El certificado de capacitación es 100% independiente.
 | 3.3.B | Backend: inscripción/desinscripción + catálogo de participantes | ✅ |
 | 3.3.C | Frontend: programaciones (listado, detalle, modales) | ✅ |
 | 3.3.D | Frontend: instructores (listado, alta/edición, desactivación) | ✅ |
-| 3.4 | Backend: certificados PDF + QR propio | ⏸️ |
+| 3.4 | Pulir aprobación de participantes (sin asistencia/ABANDONO, botones Aprobar/Reprobar, justificación) | ✅ |
+| 3.4.B | Backend: certificados PDF + QR propio | ✅ |
 | 3.5 | Backend: reportes | ⏸️ |
-| 3.8 | Frontend: certificados + reportes | ⏸️ |
+| 3.8 | Frontend: certificados ✅ + reportes ⏸️ | 🔄 |
 | 3.9 | Frontend: catálogo + formulario | ⏸️ |
-| 3.10 | Testing E2E + Docs | 🔄 — E2E del módulo y docs al día; quedan certificados/reportes |
+| 3.10 | Testing E2E + Docs | 🔄 — E2E del módulo y docs al día; quedan reportes |
 
 ---
 
@@ -387,6 +434,14 @@ El certificado de capacitación es 100% independiente.
 9. Renovación: pendiente de definir
 10. Multi-curso: un participante puede inscribirse a varios cursos
 11. Certificado de capacitación es 100% independiente de Profesionales y Cumplimiento
+12. Los cursos son de UNA SOLA SESIÓN → no aplica asistencia ni abandono
+    (columna `asistencia` y valor `ABANDONO` eliminados en FASE 3.4)
+13. Solo se puede resolver resultados con la programación en `EN_CURSO` o `FINALIZADO`
+14. Corregir un resultado previo exige `justificacion` (10–500 chars),
+    guardada en `observaciones` con prefijo `[Corrección]`
+15. Aprobado/reprobado se resuelve por persona (`participantes_capacitacion.estado`)
+    y se refleja en la inscripción (`aprobado`)
+16. `puntaje` queda como deuda futura: existe en BD, no se edita en UI
 
 ---
 

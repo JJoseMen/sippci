@@ -1,6 +1,7 @@
 import api from '@/lib/api';
 import type { ConsultaSolicitudPublica } from '@/types/public.types';
 import type { VerificarCertificadoResponse } from '@/types/certificado.types';
+import type { CertificadoCapacitacionValidacion } from '@/types/capacitacion.types';
 
 export interface CertificadoValidacion {
   valido: boolean;
@@ -27,6 +28,13 @@ export const publicService = {
 
   async validarCertificado(codigo: string): Promise<CertificadoValidacion> {
     const res = await api.get(`/public/validar-certificado/${codigo}`);
+    return res.data;
+  },
+
+  async validarCertificadoCapacitacion(
+    codigo: string,
+  ): Promise<CertificadoCapacitacionValidacion> {
+    const res = await api.get(`/public/validar-certificado-capacitacion/${codigo}`);
     return res.data;
   },
 };

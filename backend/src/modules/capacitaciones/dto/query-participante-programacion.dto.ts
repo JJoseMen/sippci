@@ -32,12 +32,6 @@ export class QueryParticipanteProgramacionDto {
   @IsEnum(EstadoParticipante)
   estado?: EstadoParticipante;
 
-  @ApiPropertyOptional({ description: 'Filtra por asistencia', enum: ['true', 'false'] })
-  @IsOptional()
-  @Transform(aBooleano)
-  @IsBoolean()
-  asistencia?: boolean;
-
   @ApiPropertyOptional({ description: 'Filtra por aprobado', enum: ['true', 'false'] })
   @IsOptional()
   @Transform(aBooleano)

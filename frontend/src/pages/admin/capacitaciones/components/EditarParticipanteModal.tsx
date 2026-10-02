@@ -20,33 +20,33 @@ const OPCIONES_ESTADO: { value: string; label: string }[] = [
   { value: 'INSCRITO', label: 'Inscrito' },
   { value: 'APROBADO', label: 'Aprobado' },
   { value: 'REPROBADO', label: 'Reprobado' },
-  { value: 'ABANDONO', label: 'Abandono' },
 ];
 
-const OPCIONES_SI_NO: { value: string; label: string }[] = [
-  { value: '', label: 'No cambiar' },
-  { value: 'true', label: 'Sí' },
-  { value: 'false', label: 'No' },
-];
+const MINIMO_JUSTIFICACION = 10;
 
 export function EditarParticipanteModal({ isOpen, inscripcion, onClose, onGuardar }: Props) {
   const [estado, setEstado] = useState('');
-  const [asistencia, setAsistencia] = useState('');
-  const [aprobado, setAprobado] = useState('');
   const [puntaje, setPuntaje] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const [justificacion, setJustificacion] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !inscripcion) return;
     setEstado('');
-    setAsistencia(inscripcion.asistencia === null ? '' : String(inscripcion.asistencia));
-    setAprobado(inscripcion.aprobado === null ? '' : String(inscripcion.aprobado));
     setPuntaje(inscripcion.puntaje != null ? String(inscripcion.puntaje) : '');
     setObservaciones(inscripcion.observaciones ?? '');
+    setJustificacion('');
     setError('');
   }, [isOpen, inscripcion]);
+
+  const estadoPrevia = inscripcion?.participante?.estado;
+  const exigeJustificacion =
+    Boolean(estadoPrevia) &&
+    estadoPrevia !== 'INSCRITO' &&
+    estado !== '' &&
+    estado !== estadoPrevia;
 
   const handleGuardar = async () => {
     if (puntaje !== '' && (Number(puntaje) < 0 || Number(puntaje) > 100)) {
@@ -54,13 +54,21 @@ export function EditarParticipanteModal({ isOpen, inscripcion, onClose, onGuarda
       return;
     }
 
+    if (exigeJustificacion && justificacion.trim().length < MINIMO_JUSTIFICACION) {
+      setError(
+        `La justificación es obligatoria al corregir un resultado previo (mínimo ${MINIMO_JUSTIFICACION} caracteres)`,
+      );
+      return;
+    }
+
     const data: ActualizarEstadoParticipanteDto = {};
     if (estado) data.estado = estado as EstadoParticipante;
-    if (asistencia) data.asistencia = asistencia === 'true';
-    if (aprobado) data.aprobado = aprobado === 'true';
     if (puntaje !== '') data.puntaje = Number(puntaje);
     if (observaciones !== (inscripcion?.observaciones ?? '')) {
       data.observaciones = observaciones;
+    }
+    if (exigeJustificacion && justificacion.trim()) {
+      data.justificacion = justificacion.trim();
     }
 
     if (Object.keys(data).length === 0) {
@@ -115,21 +123,6 @@ export function EditarParticipanteModal({ isOpen, inscripcion, onClose, onGuarda
           options={OPCIONES_ESTADO}
         />
 
-        <div className={styles.grid}>
-          <Select
-            label="Asistió"
-            value={asistencia}
-            onChange={(e) => setAsistencia(e.target.value)}
-            options={OPCIONES_SI_NO}
-          />
-          <Select
-            label="Aprobado"
-            value={aprobado}
-            onChange={(e) => setAprobado(e.target.value)}
-            options={OPCIONES_SI_NO}
-          />
-        </div>
-
         <Input
           label="Puntaje (0 - 100)"
           type="number"
@@ -151,6 +144,23 @@ export function EditarParticipanteModal({ isOpen, inscripcion, onClose, onGuarda
           value={observaciones}
           onChange={(e) => setObservaciones(e.target.value)}
         />
+
+        {exigeJustificacion && (
+          <>
+            <label className={styles.label} htmlFor="justificacion-editar">
+              Justificación (obligatoria al corregir un resultado previo)
+            </label>
+            <textarea
+              id="justificacion-editar"
+              className={styles.textarea}
+              rows={3}
+              maxLength={500}
+              value={justificacion}
+              placeholder="Describa el motivo de la corrección"
+              onChange={(e) => setJustificacion(e.target.value)}
+            />
+          </>
+        )}
 
         {error && <div className={styles.error}>{error}</div>}
       </div>

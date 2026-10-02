@@ -32,10 +32,14 @@ Documento de referencia para el equipo. Define TODAS las rutas
 | `/admin/sippci/capacitaciones/programaciones` | Programaciones | ADMIN, GESTOR_CAPACITACIONES | ✅ Implementada |
 | `/admin/sippci/capacitaciones/programaciones/:id` | Detalle de programación | ADMIN, GESTOR_CAPACITACIONES | ✅ Implementada |
 | `/admin/sippci/capacitaciones/instructores` | Instructores | ADMIN, GESTOR_CAPACITACIONES | ✅ Implementada |
-| `/admin/sippci/capacitaciones/cursos` | Cursos | ADMIN, GESTOR_CAPACITACIONES | 🔜 |
-| `/admin/sippci/capacitaciones/listas` | Listas | ADMIN, GESTOR_CAPACITACIONES | 🔜 |
-| `/admin/sippci/capacitaciones/puntajes` | Puntajes | ADMIN, GESTOR_CAPACITACIONES | 🔜 |
-| `/admin/sippci/capacitaciones/certificados` | Certificados | ADMIN, GESTOR_CAPACITACIONES | 🔜 |
+| `/admin/sippci/capacitaciones/cursos` | Cursos | ADMIN, GESTOR_CAPACITACIONES | ✅ Implementada (catálogo fijo, solo lectura) |
+| `/admin/sippci/capacitaciones/listas` | Listas | ADMIN, GESTOR_CAPACITACIONES | ✅ Stub "en desarrollo" |
+| `/admin/sippci/capacitaciones/puntajes` | Puntajes | ADMIN, GESTOR_CAPACITACIONES | ✅ Stub "próximamente" |
+| `/admin/sippci/capacitaciones/certificados` | Certificados | ADMIN, GESTOR_CAPACITACIONES | ✅ Implementada (listado + descarga PDF) |
+
+> **Ruta pública de validación:** `/validar-certificado-capacitacion/:codigo`
+> (sin login, dentro de `PublicLayout`). La emisión individual y en lote vive
+> como **acción dentro del detalle de la programación**, no como ruta propia.
 
 > **Nota:** alta/edición de instructores y de programaciones se resuelven con
 > **modales** dentro de sus listados (no hay rutas `/crear` ni `/:id/editar`).

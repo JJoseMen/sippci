@@ -119,7 +119,6 @@ enum EstadoParticipante {
   INSCRITO
   APROBADO
   REPROBADO
-  ABANDONO
 }
 
 enum EstadoInspeccion {
@@ -572,7 +571,6 @@ model participante_programacion {
   participanteId Int
   puntaje        Float?
   aprobado       Boolean?
-  asistencia     Boolean?
   certificadoId  Int?
   observaciones  String?
   createdAt      DateTime @default(now())

@@ -11,6 +11,9 @@
  *   - 4 programaciones         1 por curso, ids fijos 1-4
  *   - 6 participantes          CI 1000001-1000006
  *   - 6 inscripciones          2 por programación en las 2 primeras del listado
+ *   - certificados fixture     se BORRAN los emitidos por E2E en esas mismas
+ *                               inscripciones y se reinicia certificadoEmitido,
+ *                               para que cada corrida pueda volver a emitir.
  *
  * Contrato de ids/estados (lo exige frontend/e2e/capacitaciones.spec.ts):
  *   #1 PRIMEROS_AUXILIOS  CANCELADO    (test 2: 'Cancelado')
@@ -164,7 +167,7 @@ const INSCRIPCIONES = [
   { programacionId: 3, participanteCi: '1000005' },
 ] as const;
 
-const resultados = { creados: 0, actualizados: 0, sinCambios: 0, errores: 0 };
+const resultados = { creados: 0, actualizados: 0, sinCambios: 0, errores: 0, certificados: 0 };
 
 async function contar() {
   return {
@@ -310,12 +313,57 @@ async function main() {
     );
   }
 
+  // 6. Reinicio de certificados fixture (idempotente, solo upsert/deleteMany).
+  //    Los tests E2E emiten certificados reales y la API no permite re-emitir
+  //    (409). Para que la siguiente corrida vuelva a partir de cero se borran
+  //    los certificados ligados a las inscripciones de este seed y se
+  //    reinician los flags de emisión. Los PDF ya escritos en uploads/ quedan:
+  //    si el backend no los encuentra, los regenera (self-healing en
+  //    CertificadosService.obtenerRutaPdf).
+  for (const inscripcion of INSCRIPCIONES) {
+    const participante = await prisma.participantes_capacitacion.findFirst({
+      where: { ci: inscripcion.participanteCi },
+    });
+    if (!participante) continue;
+
+    // Primero se suelta la FK de participante_programacion y luego se borra.
+    await prisma.participante_programacion.updateMany({
+      where: {
+        programacionId: inscripcion.programacionId,
+        participanteId: participante.id,
+      },
+      data: { certificadoId: null },
+    });
+    const borrados = await prisma.certificado_capacitacion.deleteMany({
+      where: {
+        programacionId: inscripcion.programacionId,
+        participanteId: participante.id,
+      },
+    });
+    if (borrados.count > 0) {
+      resultados.certificados += borrados.count;
+      console.log(
+        `🧹 Certificado(s) fixture borrado(s): ${borrados.count} ` +
+          `(#${inscripcion.programacionId} ← CI ${inscripcion.participanteCi})`,
+      );
+    }
+
+    const reseteados = await prisma.participantes_capacitacion.updateMany({
+      where: { id: participante.id, certificadoEmitido: true },
+      data: { certificadoEmitido: false },
+    });
+    if (reseteados.count > 0) {
+      console.log(`🧹 certificadoEmitido reiniciado: CI ${inscripcion.participanteCi}`);
+    }
+  }
+
   const despues = await contar();
   console.log('\n📊 Resumen Seed Capacitaciones (completo):');
   console.log(`  ✅ Creados:      ${resultados.creados}`);
   console.log(`  🔄 Actualizados: ${resultados.actualizados}`);
   console.log(`  ⏸️  Sin cambios:  ${resultados.sinCambios}`);
   console.log(`  ❌ Errores:       ${resultados.errores}`);
+  console.log(`  🧹 Certificados:  ${resultados.certificados} reiniciados`);
   console.log('📦 Registros DESPUÉS:', despues);
 
   const programaciones = await prisma.programacion_curso.findMany({

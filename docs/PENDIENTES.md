@@ -1,6 +1,6 @@
 # Pendientes — SIPPCI
 
-**Última actualización:** 01/10/2026 (FASE 3.3 Capacitaciones, rama `rodri`)
+**Última actualización:** 01/10/2026 (FASE 3.4.B Certificados de Capacitación, rama `rodri`)
 
 ## Resumen
 
@@ -20,6 +20,11 @@
 | 12 | Instructor sin botón "Reactivar" (decisión: entidad básica) | — | ✅ Decidido — ver §FASE 3.3 |
 | 13 | Fixtures de capacitación creadas a mano en la BD | — | ✅ Resueltos (seed reproducible) |
 | 14 | Test 13 acumulaba instructores inactivos en cada corrida | — | ✅ Resuelto (CI fijo 99999999) |
+| 15 | `certificado_capacitacion.participanteId`/`emitidoPorId` sin FK | 🟡 medio | Vigente — ver §FASE 3.4.B |
+| 16 | Race condition en la numeración `CERT-CAP-YYYY-NNNN` | 🟡 medio | Vigente — ver §FASE 3.4.B |
+| 17 | Sin revocación de certificados de capacitación | 🟢 bajo | ✅ Decidido: fuera de alcance |
+| 18 | Sin re-emisión (409 si ya existe) | 🟢 bajo | ✅ Decidido: fuera de alcance |
+| 19 | `ListasPage` / `PuntajesPage` son stubs | 🟢 bajo | Vigente — ver §FASE 3.4.B |
 
 ## 1. SMTP sin configurar — 🔴 crítico
 
@@ -158,6 +163,62 @@
   - test: filtra por CI → edita → desactiva.
   - `afterAll`: lo reactiva vía `PUT` con `{ activo: true }`.
 - Resultado: **0 acumulación** de instructores inactivos tras N corridas.
+
+## FASE 3.4.B — Certificados de Capacitación (cierre 01/10/2026)
+
+### 15. FKs ausentes en `certificado_capacitacion` — 🟡 medio — Vigente
+
+- `participanteId` e `emitidoPorId` son **enteros sin `@relation`** en
+  `backend/prisma/schema.prisma` (solo `@@index`). Se resuelven con joins
+  manuales en Prisma (`INCLUDE_CERTIFICADO`) y con lookups en el servicio.
+- **Decisión:** no se añaden FKs para no requerir una migración en esta fase.
+- Riesgo: un `participanteId` o `emitidoPorId` huérfano no sería detectado por
+  la BD. Acción futura: migración con `ON DELETE SET NULL` en `emitidoPorId`.
+- **Sí existen FKs** hacia `cursos` e `instructores`, y hacia
+  `participante_programacion.certificadoId`.
+
+### 16. Race condition en la numeración de códigos — 🟡 medio — Vigente
+
+- `generarCodigoCertificado()` hace `SELECT COUNT(*) + 1` sobre
+  `certificado_capacitacion` dentro de la transacción de emisión. Dos
+  emisiones simultáneas pueden calcular el mismo número.
+- La columna `codigo` tiene `@unique`, así que la segunda falla con
+  **violación de índice (500)** en vez de duplicar el certificado.
+- **Réplica deliberada** del patrón de `certificados` (Profesionales/Cumplimiento)
+  para no introducir un comportamiento distinto en un solo módulo.
+- Acción futura: secuencia en BD o `CREATE SEQUENCE` por año.
+
+### 17. Sin revocación — ✅ Decidido (fuera de alcance)
+
+- **Decisión del usuario:** no se implementa revocación en FASE 3.4.B. El
+  único estado real es `EMITIDO`; `VENCIDO`/`REVOCADO` existen en el enum pero
+  no se asignan desde la UI.
+- La validación pública marca `vencido` solo cuando `vigenciaHasta < hoy`.
+
+### 18. Sin re-emisión — ✅ Decidido (fuera de alcance)
+
+- **Decisión del usuario:** no hay re-emisión. `POST .../emitir` responde
+  **409** si `participante_programacion.certificadoId` ya está seteado o si
+  existe un certificado para el par (programación, participante).
+- Para repetir una corrida de E2E hace falta reiniciar el estado:
+  `npx ts-node prisma/seed-capacitaciones-completo.ts` borra los certificados
+  de las 6 inscripciones fixture y pone `certificadoEmitido = false`.
+  **`frontend/e2e/global-setup.ts` ejecuta ese seed automáticamente** al
+  arrancar `npm run test:e2e` (registrado en `playwright.config.ts`).
+
+### 19. Páginas stub de capacitación — 🟢 bajo — Vigente
+
+- `frontend/src/pages/admin/capacitaciones/ListasPage.tsx` y `PuntajesPage.tsx`
+  son **stubs con `EmptyState`** ("en desarrollo" / "próximamente") creados para
+  que los enlaces del menú (`menu.config.tsx`) dejen de apuntar a rutas inexistentes.
+- `CursosPage.tsx` sí muestra el catálogo fijo (solo lectura).
+- Acción futura: listado centralizado de listas de asistencia y reporte de puntajes.
+
+### 20. PDFs huérfanos en `uploads/certificados/` — 🟢 bajo — Vigente
+
+- Borrar un `certificado_capacitacion` (seed fixture) **no borra el `.pdf`**.
+- `obtenerRutaPdf()` tiene *self-healing*: si el archivo no existe lo regenera
+  desde la BD, así que la descarga sigue funcionando.
 
 ## Incidente BD 2026-09-30
 

@@ -12,9 +12,9 @@ export class QueryParticipanteDto {
   @IsEnum(['EXTINTORES', 'PRIMEROS_AUXILIOS', 'EVACUACION', 'TRABAJOS_EN_ALTURA'] as const)
   curso?: string;
 
-  @ApiPropertyOptional({ enum: ['INSCRITO', 'APROBADO', 'REPROBADO', 'ABANDONO'] })
+  @ApiPropertyOptional({ enum: ['INSCRITO', 'APROBADO', 'REPROBADO'] })
   @IsOptional()
-  @IsEnum(['INSCRITO', 'APROBADO', 'REPROBADO', 'ABANDONO'] as const)
+  @IsEnum(['INSCRITO', 'APROBADO', 'REPROBADO'] as const)
   estado?: string;
 
   @ApiPropertyOptional({ default: 1 })
