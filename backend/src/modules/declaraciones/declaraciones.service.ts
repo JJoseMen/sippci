@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EstadoDeclaracion } from '@prisma/client';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 import PDFDocument = require('pdfkit');
 import * as QRCode from 'qrcode';
 import { mkdir, writeFile } from 'fs/promises';

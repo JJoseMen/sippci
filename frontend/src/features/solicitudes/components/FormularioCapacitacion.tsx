@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,7 +9,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { solicitudesService } from '@/services/solicitudes.service';
 import { tramiteService, type TipoDocumentoBackend } from '@/services/tramite.service';
 import { formatMoney } from '@/lib/format';
-import { CURSOS_CAPACITACION, EXPEDIDOS, BANCOS } from './wizardOptions';
+import { EXPEDIDOS, BANCOS, CURSOS_CAPACITACION } from './wizardOptions';
+import { PasoParticipantes } from './PasoParticipantes';
 import styles from './FormularioCapacitacion.module.scss';
 
 const schema = z
@@ -26,8 +27,6 @@ const schema = z
     email: z.string().email('Email invalido'),
     telefono: z.string().optional(),
     cursos: z.array(z.string()).min(1, 'Selecciona al menos un curso'),
-    cantidadParticipantes: z.coerce.number().positive('Cantidad valida').int('Entero'),
-    archivoExcel: z.string().optional(),
     numeroOperacion: z.string().min(1, 'Requerido'),
     fechaDeposito: z.string().min(1, 'Requerido'),
     banco: z.string().min(1, 'Selecciona banco'),
@@ -39,8 +38,6 @@ const schema = z
         ctx.addIssue({ code: 'custom', path: ['nombrerz'], message: 'Requerido' });
       if (!data.legal) ctx.addIssue({ code: 'custom', path: ['legal'], message: 'Requerido' });
       if (!data.cedula) ctx.addIssue({ code: 'custom', path: ['cedula'], message: 'Requerido' });
-      if (!data.archivoExcel)
-        ctx.addIssue({ code: 'custom', path: ['archivoExcel'], message: 'Adjunta lista Excel' });
     } else if (!data.nombreCompleto) {
       ctx.addIssue({ code: 'custom', path: ['nombreCompleto'], message: 'Requerido' });
     }
@@ -48,32 +45,27 @@ const schema = z
 
 type FormData = z.infer<typeof schema>;
 const PASOS = ['Solicitante', 'Cursos', 'Participantes', 'Pago'];
-const STORAGE_KEY = 'sippci_wizard_capacitacion';
+const PASO0_FIELDS: (keyof FormData)[] = ['expedido', 'email', 'telefono'];
+const ARCHIVOS: { campo: keyof FormData; tipo: TipoDocumentoBackend; requerido: boolean }[] = [
+  { campo: 'comprobante', tipo: 'COMPROBANTE_PAGO', requerido: true },
+];
 
 export function FormularioCapacitacion() {
-  console.log('FormularioCapacitacion montado');
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [paso, setPaso] = useState(0);
-  const [enviando, setEnviando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [codigoSol, setCodigoSol] = useState('');
+  const [costoTotal, setCostoTotal] = useState(0);
   const [archivos, setArchivos] = useState<Record<string, File | null>>({});
   const esJuridica = user?.tipoPersona === 'JURIDICA';
   const nombreCompleto = user ? `${user.nombre} ${user.apellido}`.trim() : '';
-  const archivosInfo = (
-    esJuridica
-      ? [{ campo: 'archivoExcel', tipo: 'PLANILLA_EXCEL' as TipoDocumentoBackend, requerido: true }]
-      : []
-  ).concat([
-    { campo: 'comprobante', tipo: 'COMPROBANTE_PAGO' as TipoDocumentoBackend, requerido: true },
-  ]);
 
   const {
     register,
-    handleSubmit,
     trigger,
     watch,
     setValue,
-    reset,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -83,97 +75,83 @@ export function FormularioCapacitacion() {
       telefono: '',
       nombreCompleto,
       cursos: [],
-      cantidadParticipantes: 1,
     },
   });
 
-  const cursosWatch = watch('cursos');
-  const cantidadWatch = watch('cantidadParticipantes');
-  const montoTotal =
-    CURSOS_CAPACITACION.filter((c) => cursosWatch?.includes(c.value)).reduce(
-      (acc, c) => acc + c.costo,
-      0,
-    ) * (Number(cantidadWatch) || 1);
-
-  useEffect(() => {
-    const guardado = localStorage.getItem(STORAGE_KEY);
-    if (guardado) {
-      try {
-        reset({ ...JSON.parse(guardado), email: user?.email || '' });
-      } catch {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const sub = watch((val) => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(val));
-    });
-    return () => sub.unsubscribe();
-  }, [watch]);
-
-  const pasoSchema = (step: number): (keyof FormData)[] => {
+  const camposPaso = (step: number): (keyof FormData)[] => {
     if (step === 0) {
       return esJuridica
-        ? ['nombrerz', 'nit', 'oficina', 'legal', 'cedula', 'expedido', 'email', 'telefono']
-        : ['nombreCompleto', 'ci', 'expedido', 'email', 'telefono'];
+        ? ['nombrerz', 'nit', 'oficina', 'legal', 'cedula', ...PASO0_FIELDS]
+        : ['nombreCompleto', 'ci', ...PASO0_FIELDS];
     }
-    if (step === 1) return ['cursos', 'cantidadParticipantes'];
-    if (step === 2) return esJuridica ? ['archivoExcel'] : ['ci', 'email'];
+    if (step === 1) return ['cursos'];
+    if (step === 2) return [];
     return ['numeroOperacion', 'fechaDeposito', 'banco', 'comprobante'];
   };
 
-  const avanzar = async () => {
-    const ok = await trigger(pasoSchema(paso));
-    if (ok) setPaso((p) => p + 1);
+  const crearSolicitud = async (): Promise<string> => {
+    const data = watch();
+    const sol = await solicitudesService.create({
+      tipoTramite: 'CAPACITACION',
+      subtipoTramite: data.tipoPersona ?? user?.tipoPersona ?? 'NATURAL',
+      datosJson: {
+        ...data,
+        tipoPersona: data.tipoPersona ?? user?.tipoPersona ?? 'NATURAL',
+      },
+    });
+    setCodigoSol(sol.codigoFormulario);
+    return sol.codigoFormulario;
   };
 
-  const enviarSolicitud = handleSubmit(async (data) => {
-    setEnviando(true);
+  const avanzar = async () => {
+    const ok = await trigger(camposPaso(paso));
+    if (!ok) return;
+    if (paso === 1 && !codigoSol) {
+      setOcupado(true);
+      try {
+        const codigo = await crearSolicitud();
+        void codigo;
+      } catch (e) {
+        console.log('error crear borrador', e);
+        toast.error('No se pudo crear la solicitud');
+        setOcupado(false);
+        return;
+      } finally {
+        setOcupado(false);
+      }
+    }
+    setPaso(paso + 1);
+  };
+
+  const enviarSolicitud = async () => {
+    if (!codigoSol) return;
+    setOcupado(true);
     try {
-      const dataFinal = {
-        ...data,
-        monto: montoTotal,
-        cantidadParticipantes: Number(data.cantidadParticipantes),
-      };
-      const sol = await solicitudesService.create({
-        tipoTramite: 'CAPACITACION',
-        subtipoTramite: data.tipoPersona ?? user?.tipoPersona ?? 'NATURAL',
-        datosJson: {
-          ...dataFinal,
-          tipoPersona: data.tipoPersona ?? user?.tipoPersona ?? 'NATURAL',
-        },
-      });
-      console.log('solicitud creada', sol.codigoFormulario);
-      for (const { campo, tipo: tipoDoc, requerido } of archivosInfo) {
+      const data = watch();
+      for (const { campo, tipo, requerido } of ARCHIVOS) {
         const file = archivos[campo as string];
         if (!file) {
           if (requerido) throw new Error(`Falta archivo requerido: ${String(campo)}`);
           continue;
         }
-        const doc = await tramiteService.subirDocumento(sol.codigoFormulario, tipoDoc, file);
-        console.log(`documento subido ${tipoDoc}`, doc.id);
+        await tramiteService.subirDocumento(codigoSol, tipo, file);
       }
-      const pago = await tramiteService.registrarPago(sol.codigoFormulario, {
+      await tramiteService.registrarPago(codigoSol, {
         numeroOperacion: data.numeroOperacion,
-        monto: montoTotal,
+        monto: costoTotal,
         fechaDeposito: data.fechaDeposito,
         banco: data.banco,
       });
-      console.log('pago registrado', pago.id);
-      const enviada = await solicitudesService.enviar(sol.codigoFormulario);
-      console.log('solicitud enviada', enviada.codigoFormulario);
+      const enviada = await solicitudesService.enviar(codigoSol);
       toast.success(`Solicitud ${enviada.codigoFormulario} enviada`);
-      localStorage.removeItem(STORAGE_KEY);
       navigate('/mis-solicitudes');
     } catch (e) {
-      console.log('error wizard capacitacion', e);
+      console.log('error enviar', e);
       toast.error('No se pudo enviar la solicitud');
     } finally {
-      setEnviando(false);
+      setOcupado(false);
     }
-  });
+  };
 
   const setFile = (name: keyof FormData) => (file: File) => {
     setValue(name as 'ci', file.name as never);
@@ -190,7 +168,7 @@ export function FormularioCapacitacion() {
         ))}
       </div>
       <div className={styles['badge']}>{esJuridica ? 'Persona Juridica' : 'Persona Natural'}</div>
-      <form onSubmit={enviarSolicitud} style={{ display: 'grid', gap: 14 }}>
+      <form onSubmit={(e) => e.preventDefault()} style={{ display: 'grid', gap: 14 }}>
         {paso === 0 && (
           <>
             {esJuridica ? (
@@ -254,40 +232,18 @@ export function FormularioCapacitacion() {
               ))}
               {errors.cursos && <span className={styles['error']}>{errors.cursos.message}</span>}
             </div>
-            <Input
-              label="Cantidad de participantes"
-              type="number"
-              error={errors.cantidadParticipantes?.message}
-              {...register('cantidadParticipantes')}
-            />
+            <p style={{ fontSize: 13, color: '#757575' }}>
+              El total a pagar se calcula automaticamente segun los participantes registrados y los
+              cursos seleccionados.
+            </p>
           </>
         )}
         {paso === 2 && (
-          <>
-            {esJuridica ? (
-              <>
-                <FileUpload
-                  label="Lista Excel de participantes"
-                  accept=".xlsx,.xls"
-                  onFileSelect={setFile('archivoExcel')}
-                />
-                {errors.archivoExcel && (
-                  <span className={styles['error']}>{errors.archivoExcel.message}</span>
-                )}
-                <p style={{ fontSize: 13, color: '#757575' }}>
-                  Columnas: Nombre, Carnet, Expedido, Curso(s), Email, Telefono
-                </p>
-              </>
-            ) : (
-              <p style={{ fontSize: 13, color: '#555' }}>
-                Como persona natural, los datos del participante se toman de tu cuenta registrada.
-              </p>
-            )}
-            <div className={styles['total']}>
-              Total a pagar ({cursosWatch?.length || 0} curso(s) x {cantidadWatch || 1}{' '}
-              participante(s)): <strong>{formatMoney(montoTotal)}</strong>
-            </div>
-          </>
+          <PasoParticipantes
+            codigo={codigoSol}
+            onCosto={setCostoTotal}
+            onReparticipantes={() => undefined}
+          />
         )}
         {paso === 3 && (
           <>
@@ -300,7 +256,7 @@ export function FormularioCapacitacion() {
               <Input
                 label="Monto total (Bs)"
                 type="number"
-                value={montoTotal}
+                value={costoTotal}
                 onChange={() => undefined}
                 style={{ background: '#f5f5f5' }}
               />
@@ -320,26 +276,30 @@ export function FormularioCapacitacion() {
             <FileUpload
               label="Comprobante"
               accept=".pdf,.jpg,.png"
+              required
+              error={errors.comprobante?.message}
               onFileSelect={setFile('comprobante')}
             />
-            {errors.comprobante && (
-              <span className={styles['error']}>{errors.comprobante.message}</span>
-            )}
           </>
         )}
         <div className={styles['nav']}>
           {paso > 0 && (
-            <Button type="button" variant="ghost" onClick={() => setPaso(paso - 1)}>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={ocupado}
+              onClick={() => setPaso(paso - 1)}
+            >
               Anterior
             </Button>
           )}
           {paso < 3 && (
-            <Button type="button" variant="primary" onClick={avanzar}>
+            <Button type="button" variant="primary" loading={ocupado} onClick={avanzar}>
               Siguiente
             </Button>
           )}
           {paso === 3 && (
-            <Button type="submit" variant="secondary" loading={enviando}>
+            <Button type="submit" variant="secondary" loading={ocupado} onClick={enviarSolicitud}>
               Enviar
             </Button>
           )}

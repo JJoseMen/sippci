@@ -74,6 +74,10 @@ export class SolicitudesService {
         pagos: true,
         certificados: true,
         declaracionesJuradas: true,
+        participantesCapacitacion: {
+          include: { relaciones: { include: { curso: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
         historial: { orderBy: { createdAt: 'desc' } },
       },
     });

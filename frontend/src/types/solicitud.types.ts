@@ -32,6 +32,25 @@ export interface SolicitudWithRelations extends Solicitud {
   certificados?: Certificado[];
   historial?: HistorialSolicitud[];
   declaracionesJuradas?: import('./declaracion.types').DeclaracionJurada | null;
+  participantesCapacitacion?: ParticipanteCapacitacion[];
+}
+
+export interface ParticipanteCapacitacion {
+  id: number;
+  subCodigo: string;
+  nombreCompleto: string;
+  carnet: string;
+  expedido: string;
+  email?: string | null;
+  telefono?: string | null;
+  esRepresentante: boolean;
+  estado: string;
+  observacion?: string | null;
+  codigoCertificado?: string | null;
+  instructor?: string | null;
+  calificacion?: string | null;
+  createdAt: string;
+  relaciones: { curso: { id: number; nombre: string; costoBsf: number } }[];
 }
 
 export interface CreateSolicitudDto {

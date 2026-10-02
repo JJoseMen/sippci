@@ -209,6 +209,46 @@ export function SolicitudDetallePage() {
         )}
       </Card>
 
+      {sol.tipoTramite === 'CAPACITACION' && sol.participantesCapacitacion && (
+        <Card title="Participantes de la capacitacion">
+          {sol.participantesCapacitacion.length > 0 ? (
+            <table className={styles['table']}>
+              <thead>
+                <tr>
+                  <th>Subcodigo</th>
+                  <th>Participante</th>
+                  <th>Carnet</th>
+                  <th>Cursos</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sol.participantesCapacitacion.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.subCodigo}</td>
+                    <td>
+                      {p.nombreCompleto}
+                      {p.esRepresentante && <em style={{ marginLeft: 6 }}>(representante)</em>}
+                    </td>
+                    <td>
+                      {p.carnet} {p.expedido}
+                    </td>
+                    <td>{p.relaciones.map((r) => r.curso.nombre).join(', ') || '-'}</td>
+                    <td>
+                      <Badge variant={badgeVariant(p.estado)} size="sm">
+                        {p.estado}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className={styles['empty']}>Sin participantes registrados</p>
+          )}
+        </Card>
+      )}
+
       {decla && (
         <Card title="Declaracion jurada">
           <div className={styles['datos']}>

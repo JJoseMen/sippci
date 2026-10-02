@@ -116,9 +116,13 @@ enum TipoCertificado {
 }
 
 enum EstadoParticipante {
+  PENDIENTE
   INSCRITO
+  FORMULARIO_GENERADO
   APROBADO
+  RECHAZADO
   REPROBADO
+  CERTIFICADO_EMITIDO
 }
 
 enum EstadoInspeccion {
@@ -147,6 +151,9 @@ enum TipoNotificacion {
   SMS
   APP
   SISTEMA
+  PARTICIPANTE_APROBADO
+  PARTICIPANTE_RECHAZADO
+  CERTIFICADO_EMITIDO
 }
 
 model usuarios {
@@ -406,7 +413,7 @@ model cursos {
 }
 
 model participantes_capacitacion {
-  id                 Int      @id @default(autoincrement())
+  id                 Int                @id @default(autoincrement())
   cursoId            Int?
   solicitudId        Int?
   nombre             String
@@ -414,10 +421,25 @@ model participantes_capacitacion {
   email              String?
   telefono           String?
   estado             EstadoParticipante @default(INSCRITO)
-  certificadoEmitido Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  curso              cursos? @relation(fields: [cursoId], references: [id])
-  solicitud          solicitudes? @relation(fields: [solicitudId], references: [id])
+  certificadoEmitido Boolean            @default(false)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  subCodigo          String?            @unique
+  nombreCompleto     String?
+  carnet             String?
+  expedido           String?
+  esRepresentante    Boolean            @default(false)
+  observacion        String?
+  pdfFormularioRuta  String?
+  pdfFormularioHash  String?
+  pdfCertificadoRuta String?
+  pdfCertificadoHash String?
+  codigoCertificado  String?            @unique
+  fechaEmisionCert   DateTime?
+  instructor         String?
+  calificacion       Float?
+  curso              cursos?            @relation(fields: [cursoId], references: [id])
+  solicitud          solicitudes?       @relation(fields: [solicitudId], references: [id])
   relaciones         participantes_cursos[]
   participanteProgramacion participante_programacion[]
   @@map("participantes_capacitacion")
@@ -427,7 +449,7 @@ model participantes_cursos {
   id               Int      @id @default(autoincrement())
   participanteId   Int
   cursoId          Int
-  estado           EstadoParticipante @default(INSCRITO)
+  estado           EstadoParticipante @default(PENDIENTE)
   fechaInscripcion DateTime @default(now())
   participante     participantes_capacitacion @relation(fields: [participanteId], references: [id], onDelete: Cascade)
   curso            cursos @relation(fields: [cursoId], references: [id], onDelete: Cascade)

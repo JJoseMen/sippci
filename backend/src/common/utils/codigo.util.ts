@@ -30,3 +30,13 @@ export function generarCodigoJurada(secuencial: number): string {
   const seq = String(secuencial).padStart(5, '0');
   return `DJ-${anio}-${seq}`;
 }
+
+export function generarCodigoSubparticipante(solicitudId: number, secuencial: number): string {
+  const anio = new Date().getFullYear();
+  return `CAP-${String(solicitudId).padStart(4, '0')}-${anio}-${String(secuencial).padStart(4, '0')}`;
+}
+
+export function generarCodigoCertificadoParticipante(secuencial: number): string {
+  const anio = new Date().getFullYear();
+  return `CER-CAP-${anio}-${String(secuencial).padStart(5, '0')}`;
+}

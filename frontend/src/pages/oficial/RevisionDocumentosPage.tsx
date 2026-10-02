@@ -3,8 +3,10 @@ import { useParams } from 'react-router-dom';
 import { Badge, Button, Input } from '@/components/ui';
 import { toast } from 'sonner';
 import { declaracionesService } from '@/services/declaraciones.service';
+import { solicitudesService } from '@/services/solicitudes.service';
 import { descargarBlob } from '@/lib/download';
 import type { DeclaracionJurada } from '@/types/declaracion.types';
+import { RevisionParticipantes } from './RevisionParticipantes';
 import styles from './RevisionDocumentosPage.module.scss';
 
 const DOCS = [
@@ -25,6 +27,7 @@ export function RevisionDocumentosPage() {
   const [declaracion, setDeclaracion] = useState<DeclaracionJurada | null>(null);
   const [observacion, setObservacion] = useState('');
   const [cargando, setCargando] = useState(false);
+  const [esCapacitacion, setEsCapacitacion] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!codigo) return;
@@ -33,6 +36,12 @@ export function RevisionDocumentosPage() {
       setDeclaracion(dj);
     } catch {
       setDeclaracion(null);
+    }
+    try {
+      const sol = await solicitudesService.findOne(codigo);
+      setEsCapacitacion(sol.tipoTramite === 'CAPACITACION');
+    } catch {
+      setEsCapacitacion(false);
     }
   }, [codigo]);
 
@@ -180,6 +189,8 @@ export function RevisionDocumentosPage() {
         </div>
       ))}
       <Button variant="secondary">Dar visto bueno (REVISADO)</Button>
+
+      {esCapacitacion && codigo && <RevisionParticipantes codigo={codigo} />}
     </div>
   );
 }

@@ -19,6 +19,24 @@ export class NotificacionesService {
     });
   }
 
+  async crearNotificacionParticipante(datos: {
+    usuarioId: number;
+    solicitudId: number;
+    tipo: 'PARTICIPANTE_APROBADO' | 'PARTICIPANTE_RECHAZADO' | 'CERTIFICADO_EMITIDO';
+    titulo: string;
+    mensaje: string;
+  }) {
+    return this.prisma.notificaciones.create({
+      data: {
+        usuarioId: datos.usuarioId,
+        solicitudId: datos.solicitudId,
+        tipo: datos.tipo as any,
+        asunto: datos.titulo,
+        mensaje: datos.mensaje,
+      },
+    });
+  }
+
   async findAll(usuarioId: number, query: QueryNotificacionDto) {
     const page = parseInt(query.page ?? '1', 10);
     const limit = parseInt(query.limit ?? '20', 10);
