@@ -121,6 +121,18 @@ export const cumplimientoService = {
   async aprobar(codigo: string): Promise<void> {
     await api.post(`/admin/sippci/cumplimiento/solicitudes/${codigo}/aprobar`);
   },
+  async finalizarRevision(codigo: string): Promise<{
+    estado: string;
+    todosValidados: boolean;
+    total: number;
+    validados: number;
+    rechazados: number;
+  }> {
+    const res = await api.post(
+      `/admin/sippci/cumplimiento/solicitudes/${codigo}/finalizar-revision-documentos`,
+    );
+    return res.data;
+  },
   async observar(codigo: string, justificacion: string): Promise<void> {
     await api.post(`/admin/sippci/cumplimiento/solicitudes/${codigo}/observar`, { justificacion });
   },

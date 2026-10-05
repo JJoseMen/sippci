@@ -48,7 +48,7 @@ export class SolicitudesController {
   }
 
   @Post(':codigo/enviar')
-  @ApiOperation({ summary: 'Enviar solicitud (BORRADOR -> ENVIADA)' })
+  @ApiOperation({ summary: 'Enviar solicitud (BORRADOR -> EN_REVISION)' })
   async enviar(@Param('codigo') codigo: string, @CurrentUser('id') userId: number) {
     return this.solicitudesService.enviar(codigo, userId);
   }

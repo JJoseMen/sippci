@@ -80,6 +80,19 @@ export class ProfesionalesController {
     return this.profesionalesService.observar(codigo, body.justificacion, userId);
   }
 
+  @Post('solicitudes/:codigo/finalizar-revision-documentos')
+  @Roles('ADMIN', 'GESTOR_REGISTRO_PROFESIONAL')
+  @ApiOperation({
+    summary:
+      'Finalizar revisión documental (NATURAL y JURIDICA comparten flujo): todos VALIDADOS → REVISADO, con RECHAZADOS → OBSERVADA',
+  })
+  async finalizarRevision(
+    @Param('codigo') codigo: string,
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.profesionalesService.finalizarRevisionDocumentos(codigo, userId);
+  }
+
   @Post('solicitudes/:codigo/rechazar')
   @Roles('ADMIN', 'GESTOR_REGISTRO_PROFESIONAL')
   @ApiOperation({ summary: 'Rechazar solicitud (requiere justificación)' })

@@ -138,7 +138,7 @@ export class CertificadosService {
     const interno = await this.prisma.usuarios_internos.findUnique({
       where: { id: usuarioInternoId },
     });
-    if (!interno || !['CAJERO', 'ADMINISTRADOR'].includes(interno.rol))
+    if (!interno || !['CAJERO', 'ADMIN'].includes(interno.rol))
       throw new ForbiddenException('Solo cajero o admin pueden entregar');
     const cert = await this.prisma.certificados.findUnique({ where: { id } });
     if (!cert) throw new NotFoundException(`Certificado ${id} no encontrado`);

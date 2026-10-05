@@ -64,7 +64,8 @@ frontend/src/
 ## Flujo completo
 
 1. Ciudadano llena formulario Natural/Jurídica y adjunta docs
-2. Envía solicitud (estado: ENVIADA)
+2. Envía solicitud → pasa DIRECTO a EN_REVISION (sin parada en ENVIADA;
+   `SolicitudesService.enviar()` salta BORRADOR → EN_REVISION)
 3. Gestor ve la solicitud en su bandeja
 4. Entra al Expediente Digital (SolicitudDetallePage)
 5. Revisa documentos
@@ -88,10 +89,13 @@ frontend/src/
 ## Estados de Solicitud
 
 ```
-BORRADOR → ENVIADA → EN_REVISION → APROBADA → CERTIFICADO_EMITIDO
-                              ↘ OBSERVADA (vuelve a EN_REVISION)
-                              ↘ RECHAZADA (final)
+BORRADOR → EN_REVISION → REVISADO → APROBADA → CERTIFICADO_EMITIDO
+                    ↘ OBSERVADA (vuelve a ENVIADA, reenvío manual)
+                    ↘ RECHAZADA (final)
 ```
+> **Nota:** ENVIADA solo se alcanza por reenvío tras OBSERVADA
+> (`OBSERVADA → ENVIADA` vía `PATCH :codigo/estado`) o en filas históricas.
+> El envío inicial del ciudadano ya no pisa ENVIADA.
 
 ## Pendientes
 

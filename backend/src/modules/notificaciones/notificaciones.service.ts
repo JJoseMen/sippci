@@ -37,10 +37,19 @@ export class NotificacionesService {
     });
   }
 
-  async findAll(usuarioId: number, query: QueryNotificacionDto) {
+  async findAll(
+    usuario: { id: number; tipo?: string } | number,
+    query: QueryNotificacionDto,
+  ) {
     const page = parseInt(query.page ?? '1', 10);
     const limit = parseInt(query.limit ?? '20', 10);
-    const where: Record<string, unknown> = { usuarioId };
+    // Ciudadanos (externos) ven sus notificaciones por usuarioId;
+    // el personal interno (gestores) ve las suyas por usuarioInternoId
+    // (p. ej. "Documento reemplazado en SOL-...").
+    const where: Record<string, unknown> =
+      typeof usuario === 'number' || usuario.tipo !== 'interno'
+        ? { usuarioId: typeof usuario === 'number' ? usuario : usuario.id }
+        : { usuarioInternoId: usuario.id };
 
     if (query.leida !== undefined) where.leida = query.leida === 'true';
     if (query.tipo) where.tipo = query.tipo;
@@ -56,10 +65,14 @@ export class NotificacionesService {
     return { items, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  async marcarLeida(id: number, usuarioId: number) {
+  async marcarLeida(id: number, usuario: { id: number; tipo?: string } | number) {
     const notif = await this.prisma.notificaciones.findUnique({ where: { id } });
     if (!notif) throw new NotFoundException(`Notificacion ${id} no encontrada`);
-    if (notif.usuarioId !== usuarioId)
+    const esInterno = typeof usuario !== 'number' && usuario.tipo === 'interno';
+    const duenio = esInterno
+      ? notif.usuarioInternoId === (usuario as { id: number }).id
+      : notif.usuarioId === (typeof usuario === 'number' ? usuario : usuario.id);
+    if (!duenio)
       throw new ForbiddenException('No es tu notificacion');
 
     return this.prisma.notificaciones.update({
@@ -68,9 +81,16 @@ export class NotificacionesService {
     });
   }
 
-  async marcarTodasLeidas(usuarioId: number) {
+  async marcarTodasLeidas(usuario: { id: number; tipo?: string } | number) {
+    const esInterno = typeof usuario !== 'number' && usuario.tipo === 'interno';
+    const where = esInterno
+      ? { usuarioInternoId: (usuario as { id: number }).id, leida: false }
+      : {
+          usuarioId: typeof usuario === 'number' ? usuario : usuario.id,
+          leida: false,
+        };
     const result = await this.prisma.notificaciones.updateMany({
-      where: { usuarioId, leida: false },
+      where,
       data: { leida: true },
     });
     return { count: result.count };

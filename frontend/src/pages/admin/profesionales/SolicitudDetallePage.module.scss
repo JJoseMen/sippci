@@ -57,6 +57,36 @@
   justify-content: space-between;
   align-items: center;
   font-size: $font-size-sm;
+  gap: $spacing-3;
+  flex-wrap: wrap;
+}
+
+.docInfo {
+  display: flex;
+  align-items: center;
+  gap: $spacing-2;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 200px;
+}
+
+.docTipo {
+  font-weight: 700;
+  font-size: $font-size-xs;
+  color: $color-gray-500;
+}
+
+.docMotivo {
+  font-size: $font-size-xs;
+  color: $color-gray-600;
+  font-style: italic;
+}
+
+.docActions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-2;
+  flex-wrap: wrap;
 }
 
 .timeline {

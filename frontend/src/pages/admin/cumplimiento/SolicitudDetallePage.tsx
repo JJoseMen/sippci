@@ -4,9 +4,13 @@ import { SectionTitle } from '@/components/admin/SectionTitle';
 import { Badge, Button, Spinner } from '@/components/ui';
 import { EmptyState } from '@/components/shared/EmptyState/EmptyState';
 import { cumplimientoService, type SolicitudCumplimiento } from '@/services/cumplimiento.service';
+import { documentosService } from '@/services/documentos.service';
 import { formatDateTime } from '@/lib/format';
+import { descargarBlob } from '@/lib/download';
 import { ModalJustificacion } from './components/ModalJustificacion';
 import { ModalProgramarInspeccion } from './components/ModalProgramarInspeccion';
+import { ModalVerDocumento } from './components/ModalVerDocumento';
+import { ModalRechazarDocumento } from './components/ModalRechazarDocumento';
 import { toast } from 'sonner';
 import styles from './SolicitudDetallePage.module.scss';
 
@@ -22,6 +26,18 @@ export function CumplimientoDetallePage({ tipo }: Props) {
   const [accionLoading, setAccionLoading] = useState(false);
   const [modal, setModal] = useState<'observar' | 'rechazar' | null>(null);
   const [modalInspeccion, setModalInspeccion] = useState(false);
+  const [verDoc, setVerDoc] = useState<{
+    nombre: string;
+    tipo: string;
+    blob: Blob | null;
+    blobUrl: string | null;
+    mime: string;
+  } | null>(null);
+  const [rechazo, setRechazo] = useState<{
+    id: number;
+    tipo: string;
+    nombre: string;
+  } | null>(null);
 
   const fetchData = async () => {
     if (!codigo) return;
@@ -112,6 +128,87 @@ export function CumplimientoDetallePage({ tipo }: Props) {
     }
   };
 
+  // ===== Revisión individual por documento (NATURAL/JURIDICA/INFRA sin distinción) =====
+  const handleValidarDoc = async (id: number) => {
+    setAccionLoading(true);
+    try {
+      await documentosService.revisar(id, { estado: 'VALIDADO' });
+      toast.success('Documento validado');
+      await fetchData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al validar';
+      toast.error(msg);
+    } finally {
+      setAccionLoading(false);
+    }
+  };
+
+  const handleRechazarDoc = async (motivo: string) => {
+    if (!rechazo) return;
+    setAccionLoading(true);
+    try {
+      await documentosService.revisar(rechazo.id, {
+        estado: 'RECHAZADO',
+        observacion: motivo,
+      });
+      toast.success('Documento rechazado');
+      setRechazo(null);
+      await fetchData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al rechazar';
+      toast.error(msg);
+    } finally {
+      setAccionLoading(false);
+    }
+  };
+
+  const handleDescargarDoc = async (id: number, nombre: string) => {
+    try {
+      const blob = await documentosService.descargar(id);
+      descargarBlob(blob, nombre);
+    } catch {
+      toast.error('No se pudo descargar el documento');
+    }
+  };
+
+  const handleVerDoc = async (id: number, nombre: string, tipo: string) => {
+    try {
+      const blob = await documentosService.ver(id);
+      const blobUrl = URL.createObjectURL(blob);
+      setVerDoc({ nombre, tipo, blob, blobUrl, mime: blob.type });
+    } catch {
+      toast.error('No se pudo abrir el documento');
+    }
+  };
+
+  const cerrarVer = () => {
+    if (verDoc?.blobUrl) URL.revokeObjectURL(verDoc.blobUrl);
+    setVerDoc(null);
+  };
+
+  const handleFinalizar = async () => {
+    if (!codigo) return;
+    setAccionLoading(true);
+    try {
+      const r = await cumplimientoService.finalizarRevision(codigo);
+      if (r.todosValidados) {
+        toast.success(
+          `Revisión finalizada: ${r.validados}/${r.total} validados. Ya puede programar la inspección.`,
+        );
+      } else {
+        toast.warning(
+          `Solicitud observada: ${r.rechazados} documento(s) rechazado(s). Se notificó al ciudadano.`,
+        );
+      }
+      await fetchData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al finalizar';
+      toast.error(msg);
+    } finally {
+      setAccionLoading(false);
+    }
+  };
+
   if (loading) return <Spinner size="md" />;
   if (!solicitud) {
     return <EmptyState title="No encontrada" description={`Solicitud ${codigo} no existe`} />;
@@ -126,11 +223,30 @@ export function CumplimientoDetallePage({ tipo }: Props) {
 
   const estado = solicitud.estado as string;
   const puedeAccionar = ['EN_REVISION', 'REVISADO', 'ENVIADA'].includes(estado);
-  const puedeProgramar = estado === 'EN_REVISION';
+  const enInforme = estado === 'INFORME_REGISTRADO';
   const puedeEmitir = estado === 'APROBADA';
-  const puedeAprobarInforme = estado === 'INFORME_REGISTRADO';
-  const puedeObservarInforme = estado === 'INFORME_REGISTRADO';
-  const puedeRechazarInforme = estado === 'INFORME_REGISTRADO';
+  const puedeAprobarInforme = enInforme;
+  const puedeObservarInforme = enInforme;
+  const puedeRechazarInforme = enInforme;
+
+  // ===== Contadores y gating (idéntico NATURAL/JURIDICA/INFRA) =====
+  const docs = (documentos ?? []) as Array<Record<string, unknown>>;
+  const totalDocs = docs.length;
+  const validados = docs.filter((d) => String(d.estado) === 'VALIDADO').length;
+  const pendientes = docs.filter((d) => String(d.estado) === 'PENDIENTE').length;
+  const rechazados = docs.filter((d) => String(d.estado) === 'RECHAZADO').length;
+  const enRevision = ['EN_REVISION', 'ENVIADA'].includes(estado);
+  const todosRevisados = totalDocs > 0 && pendientes === 0;
+  const todosValidados = totalDocs > 0 && validados === totalDocs;
+  const revisadoPor = (solicitud as Record<string, unknown>).revisadoPorId;
+  // Inspección obligatoria: programar solo tras finalizar OK (docs OK + revisadoPor).
+  const puedeProgramar =
+    estado === 'EN_REVISION' && todosValidados && !!revisadoPor && !accionLoading;
+  const puedeFinalizar = enRevision && todosRevisados && !accionLoading;
+  // Aprobar SOLO tras informe CONFORME (FIX 3); visible pero deshabilitado
+  // antes para no romper E2E ni el flujo con inspección.
+  const puedeAprobar = enInforme && !accionLoading;
+  const puedeRevisarDocs = enRevision && !accionLoading;
 
   const sistemas = datos.sistemasContraIncendios as string[] | undefined;
 
@@ -203,20 +319,105 @@ export function CumplimientoDetallePage({ tipo }: Props) {
         </div>
 
         <div className={styles.card}>
-          <h3 className={styles.cardTitle}>Documentos Adjuntos</h3>
+          <h3 className={styles.cardTitle}>
+            Documentos Adjuntos{' '}
+            {totalDocs > 0 && (
+              <span>
+                ({validados}/{totalDocs} validados
+                {pendientes > 0 && ` • ${pendientes} pendientes`}
+                {rechazados > 0 && ` • ${rechazados} rechazados`})
+              </span>
+            )}
+          </h3>
           {!documentos || documentos.length === 0 ? (
             <p className={styles.empty}>Sin documentos</p>
           ) : (
             <ul className={styles.docList}>
-              {documentos.map((d) => (
-                <li key={String(d.id)} className={styles.docItem}>
-                  <span>{String(d.nombreOriginal)}</span>
-                  <Badge size="sm" variant={String(d.estado) === 'VALIDADO' ? 'success' : 'neutral'}>
-                    {String(d.estado)}
-                  </Badge>
-                </li>
-              ))}
+              {documentos.map((d) => {
+                const dd = d as unknown as Record<string, unknown>;
+                const id = Number(dd.id);
+                const est = String(dd.estado);
+                return (
+                  <li key={String(dd.id)} className={styles.docItem}>
+                    <div className={styles.docInfo}>
+                      <span className={styles.docTipo}>
+                        {String(dd.tipo ?? 'DOCUMENTO')}
+                      </span>
+                      <span>{String(dd.nombreOriginal)}</span>
+                      <Badge
+                        size="sm"
+                        variant={
+                          est === 'VALIDADO'
+                            ? 'success'
+                            : est === 'RECHAZADO'
+                              ? 'danger'
+                              : 'neutral'
+                        }
+                      >
+                        {est}
+                      </Badge>
+                      {est === 'RECHAZADO' && dd.observaciones ? (
+                        <span className={styles.docMotivo}>
+                          {String(dd.observaciones)}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className={styles.docActions}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          handleVerDoc(id, String(dd.nombreOriginal), String(dd.tipo ?? ''))
+                        }
+                      >
+                        Ver
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          handleDescargarDoc(id, String(dd.nombreOriginal))
+                        }
+                      >
+                        Descargar
+                      </Button>
+                      {puedeRevisarDocs && est !== 'VALIDADO' && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleValidarDoc(id)}
+                          disabled={accionLoading}
+                        >
+                          Validar
+                        </Button>
+                      )}
+                      {puedeRevisarDocs && est !== 'RECHAZADO' && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() =>
+                            setRechazo({
+                              id,
+                              tipo: String(dd.tipo ?? 'DOCUMENTO'),
+                              nombre: String(dd.nombreOriginal),
+                            })
+                          }
+                          disabled={accionLoading}
+                        >
+                          Rechazar
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
+          )}
+          {enRevision && totalDocs > 0 && !todosRevisados && (
+            <p className={styles.empty}>
+              Revise cada documento (Validar / Rechazar con motivo ≥10). El
+              botón Finalizar se habilita cuando no queden PENDIENTES.
+            </p>
           )}
         </div>
 
@@ -282,9 +483,34 @@ export function CumplimientoDetallePage({ tipo }: Props) {
       </div>
 
       <div className={styles.actions}>
+        {enRevision && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleFinalizar}
+            disabled={!puedeFinalizar}
+            title={
+              todosRevisados
+                ? 'Finalizar revisión documental'
+                : `Faltan ${pendientes} documento(s) por revisar`
+            }
+          >
+            Finalizar revisión ({validados}/{totalDocs})
+          </Button>
+        )}
         {puedeAccionar && (
           <>
-            <Button variant="primary" size="sm" onClick={handleAprobar} disabled={accionLoading}>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleAprobar}
+              disabled={!puedeAprobar}
+              title={
+                puedeAprobar
+                  ? 'Aprobar solicitud'
+                  : 'Solo tras informe de inspección CONFORME (inspección obligatoria)'
+              }
+            >
               Aprobar
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setModal('observar')} disabled={accionLoading}>
@@ -295,8 +521,18 @@ export function CumplimientoDetallePage({ tipo }: Props) {
             </Button>
           </>
         )}
-        {puedeProgramar && (
-          <Button variant="secondary" size="sm" onClick={() => setModalInspeccion(true)} disabled={accionLoading}>
+        {estado === 'EN_REVISION' && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setModalInspeccion(true)}
+            disabled={!puedeProgramar}
+            title={
+              puedeProgramar
+                ? 'Programar inspección técnica'
+                : 'Finalice la revisión documental con todos los documentos VALIDADOS'
+            }
+          >
             Programar Inspección
           </Button>
         )}
@@ -337,6 +573,29 @@ export function CumplimientoDetallePage({ tipo }: Props) {
         onClose={() => setModalInspeccion(false)}
         onConfirmar={handleProgramarInspeccion}
       />
+
+      {verDoc && (
+        <ModalVerDocumento
+          abierto={verDoc !== null}
+          titulo={`${verDoc.tipo} — ${verDoc.nombre}`}
+          nombreArchivo={verDoc.nombre}
+          blobUrl={verDoc.blobUrl}
+          mimeType={verDoc.mime}
+          blob={verDoc.blob}
+          onClose={cerrarVer}
+        />
+      )}
+
+      {rechazo && (
+        <ModalRechazarDocumento
+          abierto={rechazo !== null}
+          docTipo={rechazo.tipo}
+          nombreArchivo={rechazo.nombre}
+          cargando={accionLoading}
+          onClose={() => setRechazo(null)}
+          onConfirmar={handleRechazarDoc}
+        />
+      )}
     </div>
   );
 }

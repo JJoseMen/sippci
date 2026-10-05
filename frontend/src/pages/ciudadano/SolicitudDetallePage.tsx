@@ -1,9 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button, Badge, Spinner, Card } from '@/components/ui';
 import { solicitudesService } from '@/services/solicitudes.service';
 import { documentosService } from '@/services/documentos.service';
+import { ModalVerDocumento } from './components/ModalVerDocumento';
+import { ModalReemplazarDocumento } from './components/ModalReemplazarDocumento';
 import type { SolicitudWithRelations } from '@/types/solicitud.types';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { descargarBlob } from '@/lib/download';
@@ -51,9 +54,68 @@ export function SolicitudDetallePage() {
     onError: () => toast.error('No se pudo enviar la solicitud'),
   });
 
+  const reenviar = useMutation({
+    mutationFn: () => solicitudesService.enviar(codigo!),
+    onSuccess: (s) => {
+      toast.success(
+        `Solicitud ${s.codigoFormulario} reenviada (validados conservados)`,
+      );
+      qc.invalidateQueries({ queryKey: ['solicitud', codigo] });
+    },
+    onError: () => toast.error('No se pudo reenviar la solicitud'),
+  });
+
   const descargar = async (id: number, nombre: string) => {
     const blob = await documentosService.descargar(id);
     descargarBlob(blob, nombre);
+  };
+
+  // ===== GAP 2: ver documentos en pantalla =====
+  const [verDoc, setVerDoc] = useState<{
+    id: number;
+    nombre: string;
+    tipo: string;
+    blob: Blob | null;
+    blobUrl: string | null;
+    mime: string;
+  } | null>(null);
+
+  const handleVer = async (id: number, nombre: string, tipo: string) => {
+    try {
+      const blob = await documentosService.ver(id);
+      const blobUrl = URL.createObjectURL(blob);
+      setVerDoc({ id, nombre, tipo, blob, blobUrl, mime: blob.type });
+    } catch {
+      toast.error('No se pudo abrir el documento');
+    }
+  };
+
+  const cerrarVer = () => {
+    if (verDoc?.blobUrl) URL.revokeObjectURL(verDoc.blobUrl);
+    setVerDoc(null);
+  };
+
+  // ===== GAP 1: reemplazar SOLO si RECHAZADO =====
+  const [reemplazo, setReemplazo] = useState<{
+    id: number;
+    tipo: string;
+    motivo: string;
+  } | null>(null);
+  const [reemplazando, setReemplazando] = useState(false);
+
+  const handleReemplazar = async (file: File) => {
+    if (!reemplazo) return;
+    setReemplazando(true);
+    try {
+      await documentosService.reemplazar(reemplazo.id, file);
+      toast.success('Documento reemplazado. El gestor lo revisará.');
+      setReemplazo(null);
+      qc.invalidateQueries({ queryKey: ['solicitud', codigo] });
+    } catch {
+      toast.error('No se pudo reemplazar el documento');
+    } finally {
+      setReemplazando(false);
+    }
   };
 
   if (isLoading) return <Spinner size="md" />;
@@ -63,6 +125,7 @@ export function SolicitudDetallePage() {
   const decla = sol.declaracionesJuradas;
   const cert = sol.certificados?.[0];
   const puedeEnviar = sol.estado === 'BORRADOR';
+  const puedeReenviar = ['OBSERVADA', 'ENVIADA'].includes(sol.estado);
   const puedeRenovar = ['CERTIFICADO_EMITIDO', 'VENCIDO'].includes(sol.estado);
 
   return (
@@ -81,6 +144,16 @@ export function SolicitudDetallePage() {
           {puedeEnviar && (
             <Button variant="primary" loading={enviar.isPending} onClick={() => enviar.mutate()}>
               Enviar
+            </Button>
+          )}
+          {puedeReenviar && (
+            <Button
+              variant="primary"
+              loading={reenviar.isPending}
+              onClick={() => reenviar.mutate()}
+              title="Los documentos validados se conservan; los rechazados vuelven a revisión"
+            >
+              Reenviar
             </Button>
           )}
           {puedeRenovar && (
@@ -151,7 +224,14 @@ export function SolicitudDetallePage() {
               {sol.documentos.map((d) => (
                 <tr key={d.id}>
                   <td>{d.tipo}</td>
-                  <td>{d.nombreOriginal}</td>
+                  <td>
+                    {d.nombreOriginal}
+                    {d.estado === 'RECHAZADO' && d.observaciones ? (
+                      <div>
+                        <small>Motivo del rechazo: {d.observaciones}</small>
+                      </div>
+                    ) : null}
+                  </td>
                   <td>
                     <Badge variant={badgeVariant(d.estado)} size="sm">
                       {d.estado}
@@ -162,10 +242,32 @@ export function SolicitudDetallePage() {
                     <Button
                       size="sm"
                       variant="ghost"
+                      onClick={() => handleVer(d.id, d.nombreOriginal, d.tipo)}
+                    >
+                      Ver
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       onClick={() => descargar(d.id, d.nombreOriginal)}
                     >
                       Descargar
                     </Button>
+                    {d.estado === 'RECHAZADO' && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          setReemplazo({
+                            id: d.id,
+                            tipo: d.tipo,
+                            motivo: d.observaciones ?? '',
+                          })
+                        }
+                      >
+                        Reemplazar
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -318,6 +420,29 @@ export function SolicitudDetallePage() {
           <p className={styles['empty']}>Sin historial</p>
         )}
       </Card>
+
+      {verDoc && (
+        <ModalVerDocumento
+          abierto={verDoc !== null}
+          titulo={`${verDoc.tipo} — ${verDoc.nombre}`}
+          nombreArchivo={verDoc.nombre}
+          blobUrl={verDoc.blobUrl}
+          mimeType={verDoc.mime}
+          blob={verDoc.blob}
+          onClose={cerrarVer}
+        />
+      )}
+
+      {reemplazo && (
+        <ModalReemplazarDocumento
+          abierto={reemplazo !== null}
+          docTipo={reemplazo.tipo}
+          motivo={reemplazo.motivo}
+          cargando={reemplazando}
+          onClose={() => setReemplazo(null)}
+          onConfirmar={handleReemplazar}
+        />
+      )}
     </div>
   );
 }

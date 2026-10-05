@@ -99,35 +99,82 @@ export class SolicitudesService {
 
   async enviar(codigo: string, usuarioId: number) {
     const sol = await this.findOne(codigo);
-    if (sol.estado !== EstadoSolicitud.BORRADOR) {
-      throw new BadRequestException('Solo se pueden enviar solicitudes en BORRADOR');
+    // TAREA 7: reenvío tras OBSERVADA. VALIDADOS se conservan, RECHAZADOS → PENDIENTE.
+    // Aplica a AMBOS subtipos (la lógica es por solicitud, sin distinción).
+    if (
+      sol.estado !== EstadoSolicitud.BORRADOR &&
+      sol.estado !== EstadoSolicitud.OBSERVADA &&
+      sol.estado !== EstadoSolicitud.ENVIADA
+    ) {
+      throw new BadRequestException(
+        'Solo se pueden enviar/reenviar solicitudes en BORRADOR, OBSERVADA o ENVIADA',
+      );
     }
-    const datos = sol.datosJson as Record<string, unknown>;
-    const tipoPersona = datos?.tipoPersona as string | undefined;
-    const count = await this.prisma.solicitudes.count();
-    const nuevoCodigo = generarCodigoFormulario(
-      sol.tipoTramite,
-      tipoPersona,
-      count + 1,
-    );
+    if (sol.usuarioId !== usuarioId) {
+      const { ForbiddenException } = await import('@nestjs/common');
+      throw new ForbiddenException('No es tu solicitud');
+    }
+
+    if (sol.estado === EstadoSolicitud.BORRADOR) {
+      const datos = sol.datosJson as Record<string, unknown>;
+      const tipoPersona = datos?.tipoPersona as string | undefined;
+      const count = await this.prisma.solicitudes.count();
+      const nuevoCodigo = generarCodigoFormulario(
+        sol.tipoTramite,
+        tipoPersona,
+        count + 1,
+      );
+      const updated = await this.prisma.solicitudes.update({
+        where: { id: sol.id },
+        data: {
+          codigoFormulario: nuevoCodigo,
+          estado: EstadoSolicitud.EN_REVISION,
+          fechaPresentacion: new Date(),
+        },
+      });
+      await this.prisma.historial_solicitudes.create({
+        data: {
+          solicitudId: sol.id,
+          estadoAnterior: EstadoSolicitud.BORRADOR,
+          estadoNuevo: EstadoSolicitud.EN_REVISION,
+          comentario: 'Solicitud enviada por el usuario',
+          realizadoPorId: usuarioId,
+        },
+      });
+      return updated;
+    }
+
+    // Reenvío: resetear solo RECHAZADOS → PENDIENTE, conservar VALIDADOS
+    const reseteados = await this.resetearRechazados(sol.id);
     const updated = await this.prisma.solicitudes.update({
       where: { id: sol.id },
       data: {
-        codigoFormulario: nuevoCodigo,
-        estado: EstadoSolicitud.ENVIADA,
+        estado: EstadoSolicitud.EN_REVISION,
         fechaPresentacion: new Date(),
       },
     });
     await this.prisma.historial_solicitudes.create({
       data: {
         solicitudId: sol.id,
-        estadoAnterior: EstadoSolicitud.BORRADOR,
-        estadoNuevo: EstadoSolicitud.ENVIADA,
-        comentario: 'Solicitud enviada por el usuario',
+        estadoAnterior: sol.estado,
+        estadoNuevo: EstadoSolicitud.EN_REVISION,
+        comentario: `Solicitud reenviada por el ciudadano (${reseteados} documento(s) corregido(s) a revisión; validados conservados)`,
         realizadoPorId: usuarioId,
       },
     });
     return updated;
+  }
+
+  /**
+   * TAREA 7: VALIDADOS se conservan, RECHAZADOS vuelven a PENDIENTE.
+   * Retorna cantidad reseteada. Notifica al último revisor interno si existe.
+   */
+  private async resetearRechazados(solicitudId: number): Promise<number> {
+    const r = await this.prisma.documentos.updateMany({
+      where: { solicitudId, estado: 'RECHAZADO' },
+      data: { estado: 'PENDIENTE' },
+    });
+    return r.count;
   }
 
   async cambiarEstado(
@@ -138,6 +185,16 @@ export class SolicitudesService {
     const sol = await this.findOne(codigo);
     const nuevoEstado = dto.estado as EstadoSolicitud;
     SolicitudStateMachine.validarTransicion(sol.estado, nuevoEstado);
+
+    // TAREA 7 (vía PATCH OBSERVADA → ENVIADA): conservar VALIDADOS, resetear RECHAZADOS.
+    let comentarioExtra = '';
+    if (
+      sol.estado === EstadoSolicitud.OBSERVADA &&
+      nuevoEstado === EstadoSolicitud.ENVIADA
+    ) {
+      const n = await this.resetearRechazados(sol.id);
+      comentarioExtra = ` (${n} documento(s) corregido(s) a revisión; validados conservados)`;
+    }
 
     const data: Record<string, unknown> = { estado: nuevoEstado };
     if (nuevoEstado === EstadoSolicitud.APROBADA) {
@@ -155,7 +212,7 @@ export class SolicitudesService {
         solicitudId: sol.id,
         estadoAnterior: sol.estado,
         estadoNuevo: nuevoEstado,
-        comentario: dto.observacion,
+        comentario: `${dto.observacion ?? ''}${comentarioExtra}`,
         realizadoPorId: usuarioInternoId,
       },
     });

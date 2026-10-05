@@ -1,24 +1,25 @@
 import { EstadoSolicitud } from '@prisma/client';
 import { BadRequestException } from '@nestjs/common';
 
-const TRANSICIONES: Record<EstadoSolicitud, EstadoSolicitud[]> = {
+/**
+ * State-machine AISLADO del módulo Capacitaciones (CAPACITACION).
+ *
+ * El módulo de capacitaciones gestiona participantes (EstadoParticipante)
+ * en revision-capacitaciones.service.ts; esta máquina cubre SOLO el nivel
+ * de solicitud y NO incluye inspección ni REVISADO intermedio.
+ */
+const TRANSICIONES_CAPACITACIONES: Record<EstadoSolicitud, EstadoSolicitud[]> = {
   BORRADOR: [EstadoSolicitud.EN_REVISION],
   ENVIADA: [EstadoSolicitud.EN_REVISION],
   EN_REVISION: [
-    EstadoSolicitud.REVISADO,
-    EstadoSolicitud.OBSERVADA,
-    EstadoSolicitud.RECHAZADA,
-    EstadoSolicitud.INSPECCION_PROGRAMADA,
-  ],
-  REVISADO: [EstadoSolicitud.APROBADA],
-  OBSERVADA: [EstadoSolicitud.ENVIADA],
-  INSPECCION_PROGRAMADA: [EstadoSolicitud.INFORME_REGISTRADO, EstadoSolicitud.RECHAZADA],
-  INFORME_REGISTRADO: [
-    EstadoSolicitud.REVISADO,
     EstadoSolicitud.APROBADA,
     EstadoSolicitud.OBSERVADA,
     EstadoSolicitud.RECHAZADA,
   ],
+  REVISADO: [EstadoSolicitud.APROBADA],
+  OBSERVADA: [EstadoSolicitud.ENVIADA],
+  INSPECCION_PROGRAMADA: [],
+  INFORME_REGISTRADO: [],
   APROBADA: [EstadoSolicitud.CERTIFICADO_EMITIDO, EstadoSolicitud.ANULADA],
   RECHAZADA: [],
   CERTIFICADO_EMITIDO: [EstadoSolicitud.VENCIDO],
@@ -27,12 +28,12 @@ const TRANSICIONES: Record<EstadoSolicitud, EstadoSolicitud[]> = {
   ANULADA: [],
 };
 
-export class SolicitudStateMachine {
+export class CapacitacionesStateMachine {
   static puedeTransicionar(
     actual: EstadoSolicitud,
     nuevo: EstadoSolicitud,
   ): boolean {
-    const permitidos = TRANSICIONES[actual] ?? [];
+    const permitidos = TRANSICIONES_CAPACITACIONES[actual] ?? [];
     return permitidos.includes(nuevo);
   }
 
@@ -42,8 +43,8 @@ export class SolicitudStateMachine {
   ): void {
     if (!this.puedeTransicionar(actual, nuevo)) {
       throw new BadRequestException(
-        `No se puede cambiar de ${actual} a ${nuevo}. ` +
-          `Estados permitidos: [${(TRANSICIONES[actual] ?? []).join(', ')}]`,
+        `No se puede cambiar de ${actual} a ${nuevo} (Capacitaciones). ` +
+          `Estados permitidos: [${(TRANSICIONES_CAPACITACIONES[actual] ?? []).join(', ')}]`,
       );
     }
   }
@@ -51,6 +52,6 @@ export class SolicitudStateMachine {
   static obtenerEstadosPermitidos(
     actual: EstadoSolicitud,
   ): EstadoSolicitud[] {
-    return TRANSICIONES[actual] ?? [];
+    return TRANSICIONES_CAPACITACIONES[actual] ?? [];
   }
 }

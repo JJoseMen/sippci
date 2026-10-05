@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { QueryProfesionalesDto } from './dto/query-profesionales.dto';
 import { EmitirCertificadoDto } from './dto/emitir-certificado.dto';
-import { SolicitudStateMachine } from '../solicitudes/state-machine/solicitud.state-machine';
+import { ProfesionalesStateMachine as SolicitudStateMachine } from './state-machine/profesionales.state-machine';
 import { EstadoSolicitud, TipoCertificado } from '@prisma/client';
 import { CertificadosPdfService } from '../certificados/certificados-pdf.service';
 import * as fs from 'fs';
@@ -126,6 +126,9 @@ export class ProfesionalesService {
 
     this.validarTransicion(sol.estado as string, 'APROBADA');
 
+    // TAREA 5: aprobar exige TODOS los docs VALIDADOS (sin distinción NATURAL/JURIDICA).
+    await this.validarTodosDocumentosValidados(sol.id);
+
     const actualizada = await this.prisma.solicitudes.update({
       where: { id: sol.id },
       data: { estado: 'APROBADA' as EstadoSolicitud },
@@ -135,11 +138,132 @@ export class ProfesionalesService {
       sol.id,
       sol.estado as string,
       'APROBADA',
-      'Solicitud aprobada',
+      'Solicitud aprobada (revisión documental finalizada, todos los documentos validados)',
       userId,
     );
 
+    await this.notificarCiudadano(
+      sol.id,
+      'Solicitud aprobada',
+      `Su solicitud ${sol.codigoFormulario} fue APROBADA. Ya puede pasar a emisión del certificado.`,
+    );
+
     return actualizada;
+  }
+
+  /**
+   * TAREA 4 — NUEVO endpoint: finalizar revisión documental.
+   * POST /admin/profesionales/solicitudes/:codigo/finalizar-revision-documentos
+   * Lógica idéntica para NATURAL y JURIDICA.
+   * - Exige estado EN_REVISION (o ENVIADA por compat con reenvíos).
+   * - Exige ≥1 documento y CERO en PENDIENTE (botón se habilita solo entonces).
+   * - Todos VALIDADOS → REVISADO (habilita Aprobar).
+   * - Algún RECHAZADO → OBSERVADA + notificación con lista de rechazados.
+   */
+  async finalizarRevisionDocumentos(codigo: string, userId: number) {
+    const sol = await this.getSolicitudValidada(codigo);
+
+    if (!['EN_REVISION', 'ENVIADA'].includes(sol.estado as string)) {
+      throw new BadRequestException(
+        `Solo se puede finalizar la revisión en EN_REVISION. Estado actual: ${sol.estado}`,
+      );
+    }
+
+    const docs = await this.prisma.documentos.findMany({
+      where: { solicitudId: sol.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (docs.length === 0) {
+      throw new BadRequestException(
+        'La solicitud no tiene documentos para revisar',
+      );
+    }
+
+    const pendientes = docs.filter((d) => d.estado === 'PENDIENTE');
+    if (pendientes.length > 0) {
+      throw new BadRequestException(
+        `Hay ${pendientes.length} documento(s) sin revisar: ${pendientes
+          .map((d) => d.nombreOriginal)
+          .join(', ')}`,
+      );
+    }
+
+    const rechazados = docs.filter((d) => d.estado === 'RECHAZADO');
+
+    if (rechazados.length === 0) {
+      this.validarTransicion(sol.estado as string, 'REVISADO');
+      const actualizada = await this.prisma.solicitudes.update({
+        where: { id: sol.id },
+        data: {
+          estado: 'REVISADO' as EstadoSolicitud,
+          revisadoPorId: userId,
+        },
+      });
+      await this.registrarHistorial(
+        sol.id,
+        sol.estado as string,
+        'REVISADO',
+        `Revisión documental finalizada: ${docs.length}/${docs.length} validados. Lista para aprobar.`,
+        userId,
+      );
+      await this.notificarCiudadano(
+        sol.id,
+        'Revisión documental finalizada',
+        `Su solicitud ${sol.codigoFormulario} superó la revisión documental (${docs.length}/${docs.length} validados). Está lista para aprobación.`,
+      );
+      return {
+        estado: 'REVISADO',
+        todosValidados: true,
+        total: docs.length,
+        validados: docs.length,
+        rechazados: 0,
+        solicitud: actualizada,
+      };
+    }
+
+    // Hay rechazados → OBSERVADA + notificación con lista
+    this.validarTransicion(sol.estado as string, 'OBSERVADA');
+    const lista = rechazados
+      .map((d) => `- ${d.tipo} (${d.nombreOriginal}): ${this.motivoCorto(d.observaciones)}`)
+      .join('\n');
+    const justificacion =
+      `Revisión documental finalizada con ${rechazados.length} documento(s) observado(s):\n${lista}`;
+
+    const actualizada = await this.prisma.solicitudes.update({
+      where: { id: sol.id },
+      data: {
+        estado: 'OBSERVADA' as EstadoSolicitud,
+        revisadoPorId: userId,
+      },
+    });
+    await this.registrarHistorial(
+      sol.id,
+      sol.estado as string,
+      'OBSERVADA',
+      justificacion,
+      userId,
+    );
+    await this.notificarCiudadano(
+      sol.id,
+      'Solicitud observada: documentos por corregir',
+      `Su solicitud ${sol.codigoFormulario} fue OBSERVADA. Documentos a corregir:\n${lista}\nLos documentos validados se conservan; corrija solo los observados y reenvíe.`,
+    );
+
+    return {
+      estado: 'OBSERVADA',
+      todosValidados: false,
+      total: docs.length,
+      validados: docs.length - rechazados.length,
+      rechazados: rechazados.length,
+      detalleRechazados: rechazados.map((d) => ({
+        id: d.id,
+        tipo: d.tipo,
+        nombreOriginal: d.nombreOriginal,
+        motivo: d.observaciones,
+      })),
+      solicitud: actualizada,
+    };
   }
 
   async observar(codigo: string, justificacion: string, userId: number) {
@@ -164,6 +288,12 @@ export class ProfesionalesService {
       'OBSERVADA',
       justificacion,
       userId,
+    );
+
+    await this.notificarCiudadano(
+      sol.id,
+      'Solicitud observada',
+      `Su solicitud ${sol.codigoFormulario} fue OBSERVADA: ${justificacion}`,
     );
 
     return actualizada;
@@ -191,6 +321,12 @@ export class ProfesionalesService {
       'RECHAZADA',
       justificacion,
       userId,
+    );
+
+    await this.notificarCiudadano(
+      sol.id,
+      'Solicitud rechazada',
+      `Su solicitud ${sol.codigoFormulario} fue RECHAZADA: ${justificacion}`,
     );
 
     return actualizada;
@@ -482,6 +618,61 @@ export class ProfesionalesService {
         `Transición no permitida: ${estadoActual} → ${estadoNuevo}. Permitidos: ${permitidos.join(', ')}`,
       );
     }
+  }
+
+  /**
+   * TAREA 5: aprobar exige TODOS los documentos en VALIDADO.
+   * Sin distinción de subtipo (NATURAL/JURIDICA comparten flujo).
+   * Si no hay documentos, también bloquea (el trámite exige docs).
+   */
+  private async validarTodosDocumentosValidados(solicitudId: number) {
+    const docs = await this.prisma.documentos.findMany({
+      where: { solicitudId },
+      select: { id: true, nombreOriginal: true, estado: true },
+    });
+    if (docs.length === 0) {
+      throw new BadRequestException(
+        'No se puede aprobar: la solicitud no tiene documentos',
+      );
+    }
+    const noValidados = docs.filter((d) => d.estado !== 'VALIDADO');
+    if (noValidados.length > 0) {
+      throw new BadRequestException(
+        `No se puede aprobar: ${noValidados.length} documento(s) sin validar: ${noValidados
+          .map((d) => `${d.nombreOriginal} (${d.estado})`)
+          .join(', ')}. Finalice la revisión documental primero.`,
+      );
+    }
+  }
+
+  /** TAREA 10: notificación genérica al ciudadano dueño (sin distinción de subtipo). */
+  private async notificarCiudadano(
+    solicitudId: number,
+    asunto: string,
+    mensaje: string,
+  ) {
+    const sol = await this.prisma.solicitudes.findUnique({
+      where: { id: solicitudId },
+      select: { usuarioId: true },
+    });
+    if (!sol) return;
+    await this.prisma.notificaciones.create({
+      data: {
+        usuarioId: sol.usuarioId,
+        solicitudId,
+        tipo: 'SISTEMA' as any,
+        asunto,
+        mensaje,
+      },
+    });
+  }
+
+  private motivoCorto(observaciones: string | null): string {
+    if (!observaciones) return 'sin motivo registrado';
+    // observaciones puede contener "hash:xxx | motivo"; mostrar la parte humana
+    const partes = observaciones.split('|').map((p) => p.trim());
+    const humano = partes.filter((p) => !p.startsWith('hash:')).join(' | ');
+    return (humano || observaciones).slice(0, 200);
   }
 
   private async registrarHistorial(

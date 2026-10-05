@@ -25,6 +25,8 @@
 | 17 | Sin revocación de certificados de capacitación | 🟢 bajo | ✅ Decidido: fuera de alcance |
 | 18 | Sin re-emisión (409 si ya existe) | 🟢 bajo | ✅ Decidido: fuera de alcance |
 | 19 | `ListasPage` / `PuntajesPage` son stubs | 🟢 bajo | Vigente — ver §FASE 3.4.B |
+| 20 | PDFs huérfanos en `uploads/certificados/` | 🟢 bajo | Vigente — ver §FASE 3.4.B |
+| 21 | Unificar subtipos SIPPCI (NATURAL/JURIDICA/INFRAESTRUCTURA) | 🟢 bajo | Vigente — ver §SUBTIPOS-SIPPCI |
 
 ## 1. SMTP sin configurar — 🔴 crítico
 
@@ -219,6 +221,19 @@
 - Borrar un `certificado_capacitacion` (seed fixture) **no borra el `.pdf`**.
 - `obtenerRutaPdf()` tiene *self-healing*: si el archivo no existe lo regenera
   desde la BD, así que la descarga sigue funcionando.
+
+## SUBTIPOS-SIPPCI — Unificar subtipos (Opción A vigente) — 🟢 bajo
+
+- **Decisión (rama `rodri`):** SIN migración. El backend de Cumplimiento
+  acepta los 3 subtipos (`NATURAL`, `JURIDICA`, `INFRAESTRUCTURA`):
+  la lista Natural incluye `NATURAL` + `INFRAESTRUCTURA`, la lista
+  Jurídica incluye `JURIDICA` + `INFRAESTRUCTURA` con
+  `datosJson.tipoPersona = JURIDICA`. Las rutas no cambian.
+- Origen: el wizard SIPPCI crea `INFRAESTRUCTURA` para no-JURIDICA
+  (`FormularioSIPPCI.tsx`), por eso hay filas mixtas (8 SIPPCI:
+  3 NATURAL, 3 JURIDICA, 2 INFRAESTRUCTURA al 10/2026).
+- Deuda futura: migrar `INFRAESTRUCTURA` → `NATURAL`/`JURIDICA` según
+  `tipoPersona` y simplificar los filtros a igualdad de subtipo.
 
 ## Incidente BD 2026-09-30
 

@@ -23,6 +23,20 @@ export const documentosService = {
     return res.data;
   },
 
+  async ver(id: number): Promise<Blob> {
+    const res = await api.get(`/documentos/${id}/ver`, { responseType: 'blob' });
+    return res.data;
+  },
+
+  async reemplazar(id: number, file: File): Promise<Documento> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post(`/documentos/${id}/reemplazar`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+
   async revisar(id: number, data: RevisarDocumentoDto): Promise<Documento> {
     const res = await api.patch(`/documentos/${id}/revisar`, data);
     return res.data;

@@ -15,6 +15,7 @@ import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { Prisma, TipoCodigo } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class AuthService {
@@ -232,22 +233,28 @@ export class AuthService {
     apellido: string;
     rol: unknown;
   }) {
+    // FIX Kerberos 500 (StrictMode invoca el callback 2 veces con POSTs
+    // solapados): deleteMany + create en transacción y jti único por emisión,
+    // así dos emisiones en el mismo segundo no colisionan en sesiones.token.
     const token = this.jwt.sign({
       sub: user.id,
       email: user.email,
       tipo: 'interno',
       rol: user.rol,
+      jti: randomUUID(),
     });
-    await this.prisma.sesiones.deleteMany({
-      where: { usuarioInternoId: user.id },
-    });
-    await this.prisma.sesiones.create({
-      data: {
-        usuarioInternoId: user.id,
-        token,
-        expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.sesiones.deleteMany({
+        where: { usuarioInternoId: user.id },
+      }),
+      this.prisma.sesiones.create({
+        data: {
+          usuarioInternoId: user.id,
+          token,
+          expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
+        },
+      }),
+    ]);
     const TIPO_POR_ROL: Record<string, string> = {
       ADMIN: 'ADMIN',
       GESTOR_CUMPLIMIENTO: 'GESTOR_CUMPLIMIENTO',

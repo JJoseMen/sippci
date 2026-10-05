@@ -81,6 +81,19 @@ export class CumplimientoController {
     return this.service.rechazar(codigo, dto.justificacion, userId);
   }
 
+  @Post('solicitudes/:codigo/finalizar-revision-documentos')
+  @Roles('ADMIN', 'GESTOR_CUMPLIMIENTO')
+  @ApiOperation({
+    summary:
+      'Finalizar revisión documental (NATURAL/JURIDICA/INFRA sin distinción): todos VALIDADOS → habilita inspección; con RECHAZADOS → OBSERVADA',
+  })
+  async finalizarRevision(
+    @Param('codigo') codigo: string,
+    @CurrentUser('id') userId: number,
+  ) {
+    return this.service.finalizarRevisionDocumentos(codigo, userId);
+  }
+
   // ============ INSPECCIONES ============
   @Post('solicitudes/:codigo/programar-inspeccion')
   @Roles('ADMIN', 'GESTOR_CUMPLIMIENTO')

@@ -17,4 +17,5 @@ export interface Documento {
 export interface RevisarDocumentoDto {
   estado: EstadoDocumento;
   observaciones?: string;
+  observacion?: string;
 }

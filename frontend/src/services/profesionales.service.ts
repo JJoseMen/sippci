@@ -24,8 +24,10 @@ export interface SolicitudProfesional {
   };
   documentos?: Array<{
     id: number;
+    tipo?: string;
     nombreOriginal: string;
     estado: string;
+    observaciones?: string;
   }>;
   certificados?: Array<{
     id: number;
@@ -104,6 +106,18 @@ export const profesionalesService = {
   // Acciones
   async aprobar(codigo: string): Promise<void> {
     await api.post(`/admin/profesionales/solicitudes/${codigo}/aprobar`);
+  },
+  async finalizarRevision(codigo: string): Promise<{
+    estado: string;
+    todosValidados: boolean;
+    total: number;
+    validados: number;
+    rechazados: number;
+  }> {
+    const res = await api.post(
+      `/admin/profesionales/solicitudes/${codigo}/finalizar-revision-documentos`,
+    );
+    return res.data;
   },
   async observar(codigo: string, justificacion: string): Promise<void> {
     await api.post(`/admin/profesionales/solicitudes/${codigo}/observar`, { justificacion });

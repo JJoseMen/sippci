@@ -11,7 +11,7 @@ import { QueryCumplimientoDto } from './dto/query-cumplimiento.dto';
 import { ProgramarInspeccionDto } from './dto/programar-inspeccion.dto';
 import { RegistrarInformeDto } from './dto/registrar-informe.dto';
 import { EmitirCertificadoCumplimientoDto } from './dto/accion-cumplimiento.dto';
-import { SolicitudStateMachine } from '../solicitudes/state-machine/solicitud.state-machine';
+import { CumplimientoStateMachine as SolicitudStateMachine } from './state-machine/cumplimiento.state-machine';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -36,36 +36,54 @@ export class CumplimientoService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
-    const where: Record<string, unknown> = {
-      tipoTramite: TIPO_TRAMITE,
-      subtipoTramite: tipo,
-    };
+    // FIX 2 (Opción A, sin migración): INFRAESTRUCTURA visible según tipoPersona.
+    // El wizard SIPPCI crea subtipo INFRAESTRUCTURA para no-JURIDICA, así que
+    // la lista Natural incluye NATURAL + INFRA; la lista Jurídica incluye
+    // JURIDICA + INFRA con tipoPersona=JURIDICA. Rutas sin cambios.
+    const filtroGrupo =
+      tipo === 'NATURAL'
+        ? [{ subtipoTramite: 'NATURAL' }, { subtipoTramite: 'INFRAESTRUCTURA' }]
+        : [
+            { subtipoTramite: 'JURIDICA' },
+            {
+              subtipoTramite: 'INFRAESTRUCTURA',
+              datosJson: { path: ['tipoPersona'], equals: 'JURIDICA' },
+            },
+          ];
 
-    if (query.estado) where.estado = query.estado;
+    const and: Record<string, unknown>[] = [{ OR: filtroGrupo }];
+
+    if (query.estado) and.push({ estado: query.estado });
 
     if (query.nivelRiesgo) {
-      where.datosJson = { path: ['nivelRiesgo'], equals: query.nivelRiesgo };
+      and.push({ datosJson: { path: ['nivelRiesgo'], equals: query.nivelRiesgo } });
     }
 
     if (query.search) {
-      where.OR = [
-        { codigoFormulario: { contains: query.search, mode: 'insensitive' } },
-        { usuario: { nombre: { contains: query.search, mode: 'insensitive' } } },
-        { empresa: { razonSocial: { contains: query.search, mode: 'insensitive' } } },
-      ];
+      and.push({
+        OR: [
+          { codigoFormulario: { contains: query.search, mode: 'insensitive' } },
+          { usuario: { nombre: { contains: query.search, mode: 'insensitive' } } },
+          { empresa: { razonSocial: { contains: query.search, mode: 'insensitive' } } },
+        ],
+      });
     }
 
     if (query.fechaDesde || query.fechaHasta) {
-      where.createdAt = {};
+      const createdAt: Record<string, unknown> = {};
       if (query.fechaDesde) {
-        (where.createdAt as Record<string, unknown>).gte = new Date(query.fechaDesde);
+        createdAt.gte = new Date(query.fechaDesde);
       }
       if (query.fechaHasta) {
-        (where.createdAt as Record<string, unknown>).lte = new Date(
-          query.fechaHasta + 'T23:59:59Z',
-        );
+        createdAt.lte = new Date(query.fechaHasta + 'T23:59:59Z');
       }
+      and.push({ createdAt });
     }
+
+    const where: Record<string, unknown> = {
+      tipoTramite: TIPO_TRAMITE,
+      AND: and,
+    };
 
     const [items, total] = await Promise.all([
       this.prisma.solicitudes.findMany({
@@ -106,7 +124,6 @@ export class CumplimientoService {
       where: {
         codigoFormulario: codigo,
         tipoTramite: TIPO_TRAMITE,
-        subtipoTramite: tipo,
       },
       include: {
         usuario: {
@@ -132,7 +149,28 @@ export class CumplimientoService {
       );
     }
 
+    // FIX 2: INFRAESTRUCTURA pertenece al grupo según tipoPersona
+    // (NATURAL por defecto, como el wizard: user?.tipoPersona || 'NATURAL').
+    if (!this.esDelGrupo(sol.subtipoTramite as string, sol.datosJson, tipo)) {
+      throw new NotFoundException(
+        `Solicitud ${codigo} no encontrada para tipo ${tipo}`,
+      );
+    }
+
     return sol;
+  }
+
+  private esDelGrupo(
+    subtipo: string,
+    datosJson: unknown,
+    tipo: TipoCumplimiento,
+  ): boolean {
+    if (subtipo === tipo) return true;
+    if (subtipo !== 'INFRAESTRUCTURA') return false;
+    const tipoPersona = (datosJson as Record<string, unknown> | null)?.tipoPersona;
+    return tipo === 'JURIDICA'
+      ? tipoPersona === 'JURIDICA'
+      : tipoPersona !== 'JURIDICA';
   }
 
   // ============================================================
@@ -142,7 +180,18 @@ export class CumplimientoService {
   async aprobar(codigo: string, userId: number) {
     const sol = await this.getSolicitudValidada(codigo);
 
+    // FIX 3 — Inspección obligatoria: aprobar SOLO desde INFORME_REGISTRADO
+    // (informe CONFORME). Sin atajo EN_REVISION -> APROBADA.
+    if (sol.estado !== 'INFORME_REGISTRADO') {
+      throw new BadRequestException(
+        `Solo se puede aprobar con informe CONFORME registrado. Estado actual: ${sol.estado}`,
+      );
+    }
+
     this.validarTransicion(sol.estado, 'APROBADA');
+
+    // Aprobar exige TODOS los documentos VALIDADOS (NATURAL/JURIDICA/INFRA sin distinción).
+    await this.validarTodosDocumentosValidados(sol.id);
 
     const actualizada = await this.prisma.solicitudes.update({
       where: { id: sol.id },
@@ -183,6 +232,12 @@ export class CumplimientoService {
       userId,
     );
 
+    await this.notificarCiudadano(
+      sol.id,
+      'Solicitud observada',
+      `Su solicitud ${sol.codigoFormulario} fue OBSERVADA: ${justificacion}`,
+    );
+
     return actualizada;
   }
 
@@ -209,7 +264,124 @@ export class CumplimientoService {
       userId,
     );
 
+    await this.notificarCiudadano(
+      sol.id,
+      'Solicitud rechazada',
+      `Su solicitud ${sol.codigoFormulario} fue RECHAZADA: ${justificacion}`,
+    );
+
     return actualizada;
+  }
+
+  // ============================================================
+  // REVISIÓN DOCUMENTAL (FIX 1 — NATURAL/JURIDICA/INFRA sin distinción)
+  // ============================================================
+
+  /**
+   * Finalizar revisión documental.
+   * - Todos VALIDADOS → permanece EN_REVISION + marca revisadoPorId
+   *   (habilita Programar Inspección). Sin botón intermedio.
+   * - Con RECHAZADOS → OBSERVADA + notificación con lista.
+   */
+  async finalizarRevisionDocumentos(codigo: string, userId: number) {
+    const sol = await this.getSolicitudValidada(codigo);
+
+    if (!['EN_REVISION', 'ENVIADA'].includes(sol.estado as string)) {
+      throw new BadRequestException(
+        `Solo se puede finalizar la revisión en EN_REVISION. Estado actual: ${sol.estado}`,
+      );
+    }
+
+    const docs = await this.prisma.documentos.findMany({
+      where: { solicitudId: sol.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (docs.length === 0) {
+      throw new BadRequestException(
+        'La solicitud no tiene documentos para revisar',
+      );
+    }
+
+    const pendientes = docs.filter((d) => d.estado === 'PENDIENTE');
+    if (pendientes.length > 0) {
+      throw new BadRequestException(
+        `Hay ${pendientes.length} documento(s) sin revisar: ${pendientes
+          .map((d) => d.nombreOriginal)
+          .join(', ')}`,
+      );
+    }
+
+    const rechazados = docs.filter((d) => d.estado === 'RECHAZADO');
+
+    if (rechazados.length === 0) {
+      const actualizada = await this.prisma.solicitudes.update({
+        where: { id: sol.id },
+        data: { revisadoPorId: userId },
+      });
+      await this.registrarHistorial(
+        sol.id,
+        sol.estado,
+        sol.estado,
+        `Revisión documental finalizada (Cumplimiento): ${docs.length}/${docs.length} validados. Habilitada la inspección técnica.`,
+        userId,
+      );
+      await this.notificarCiudadano(
+        sol.id,
+        'Revisión documental finalizada',
+        `Su solicitud ${sol.codigoFormulario} superó la revisión documental (${docs.length}/${docs.length} validados). Sigue la inspección técnica.`,
+      );
+      return {
+        estado: sol.estado,
+        todosValidados: true,
+        total: docs.length,
+        validados: docs.length,
+        rechazados: 0,
+        solicitud: actualizada,
+      };
+    }
+
+    this.validarTransicion(sol.estado, 'OBSERVADA');
+    const lista = rechazados
+      .map((d) => `- ${d.tipo} (${d.nombreOriginal}): ${this.motivoCorto(d.observaciones)}`)
+      .join('\n');
+    const justificacion =
+      `Revisión documental finalizada con ${rechazados.length} documento(s) observado(s):\n${lista}`;
+
+    const actualizada = await this.prisma.solicitudes.update({
+      where: { id: sol.id },
+      data: {
+        estado: 'OBSERVADA',
+        revisadoPorId: userId,
+      },
+    });
+    await this.registrarHistorial(
+      sol.id,
+      sol.estado,
+      'OBSERVADA',
+      justificacion,
+      userId,
+    );
+    await this.notificarCiudadano(
+      sol.id,
+      'Solicitud observada: documentos por corregir',
+      `Su solicitud ${sol.codigoFormulario} fue OBSERVADA. Documentos a corregir:\n${lista}\nLos documentos validados se conservan; corrija solo los observados y reenvíe.`,
+    );
+
+    return {
+      estado: 'OBSERVADA',
+      todosValidados: false,
+      total: docs.length,
+      validados: docs.length - rechazados.length,
+      rechazados: rechazados.length,
+      detalleRechazados: rechazados.map((d) => ({
+        id: d.id,
+        tipo: d.tipo,
+        nombreOriginal: d.nombreOriginal,
+        motivo: d.observaciones,
+      })),
+      solicitud: actualizada,
+    };
   }
 
   // ============================================================
@@ -224,6 +396,10 @@ export class CumplimientoService {
     const sol = await this.getSolicitudValidada(codigo);
 
     this.validarTransicion(sol.estado, 'INSPECCION_PROGRAMADA');
+
+    // FIX 1/3: programar exige revisión documental finalizada
+    // (todos los documentos VALIDADOS).
+    await this.validarTodosDocumentosValidados(sol.id);
 
     const inspectorId = dto.inspectorId ?? userId;
 
@@ -703,6 +879,55 @@ export class CumplimientoService {
         `Transición no permitida: ${estadoActual} → ${estadoNuevo}. Permitidos: ${permitidos.join(', ')}`,
       );
     }
+  }
+
+  /** Aprobar/programar exigen TODOS los documentos en VALIDADO (sin distinción de subtipo). */
+  private async validarTodosDocumentosValidados(solicitudId: number) {
+    const docs = await this.prisma.documentos.findMany({
+      where: { solicitudId },
+      select: { id: true, nombreOriginal: true, estado: true },
+    });
+    if (docs.length === 0) {
+      throw new BadRequestException(
+        'No se puede continuar: la solicitud no tiene documentos',
+      );
+    }
+    const noValidados = docs.filter((d) => d.estado !== 'VALIDADO');
+    if (noValidados.length > 0) {
+      throw new BadRequestException(
+        `No se puede continuar: ${noValidados.length} documento(s) sin validar: ${noValidados
+          .map((d) => `${d.nombreOriginal} (${d.estado})`)
+          .join(', ')}. Finalice la revisión documental primero.`,
+      );
+    }
+  }
+
+  private async notificarCiudadano(
+    solicitudId: number,
+    asunto: string,
+    mensaje: string,
+  ) {
+    const sol = await this.prisma.solicitudes.findUnique({
+      where: { id: solicitudId },
+      select: { usuarioId: true },
+    });
+    if (!sol) return;
+    await this.prisma.notificaciones.create({
+      data: {
+        usuarioId: sol.usuarioId,
+        solicitudId,
+        tipo: 'SISTEMA' as never,
+        asunto,
+        mensaje,
+      },
+    });
+  }
+
+  private motivoCorto(observaciones: string | null): string {
+    if (!observaciones) return 'sin motivo registrado';
+    const partes = observaciones.split('|').map((p) => p.trim());
+    const humano = partes.filter((p) => !p.startsWith('hash:')).join(' | ');
+    return (humano || observaciones).slice(0, 200);
   }
 
   private async registrarHistorial(
